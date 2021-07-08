@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +16,7 @@
 
 #include <autoingest/.idl/storage/LayerLegend.h>
 #include <autoingest/.idl/storage/MapSubLayerConfig.h>
+#requiresgetheapusage
 
 #cppquote
 #include <autoingest/.idl/storage/LayerLegend_impl.h>
@@ -28,7 +30,7 @@ class MapLayerConfig {
   std::vector<MapSubLayerConfig> subLayers;
 
   // ChannelID Unique across all of fusion
-  uint32      fuid_channel_ = uint32(0);
+  std::uint32_t      fuid_channel_ = std::uint32_t(0);
 
 #hquote
   bool HasSearchFields(void) const;
@@ -37,7 +39,6 @@ class MapLayerConfig {
   void ResetIds(void) {
     fuid_channel_ = 0;
   }
-
 #/hquote
 
 #cppquote
@@ -65,4 +66,3 @@ class MapLayerEditRequest {
 
 #pragma StrLoadAndSave
 };
-

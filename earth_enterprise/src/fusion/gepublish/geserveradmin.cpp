@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -96,7 +97,12 @@ void usage(const std::string &progn, const char *msg = 0, ...) {
     "   [--setecdefault]         Publish this database as the default one for\n"
     "                            the Earth Client to connect to if no database\n"
     "                            or virtual host is specified upon initial\n"
-    "                            connection.\n" 
+    "                            connection.\n"
+    "   [--enable_poisearch]     Enable Point of Interest search if database\n"
+    "                            contains POI data.\n"
+    "   [--enable_enhancedsearch]If POI search is enabled, enable enhanced\n"
+    "                            search.\n"
+    "   [--serve_wms]            Serve content via WMS.\n"
     " --unpublish <target_path>  Unpublish the DB served from the specified\n"
     "                            target path.\n"
     " --republishdb <db_name>    Publish a registered DB on the specified\n"
@@ -249,16 +255,15 @@ void SetFusionHost(PublisherClient* client,
 void DisableCutter() {
   int ret_status =
     system("cd /opt/google/bin; "
-           "chmod -x gepolygontoqtnodes; "
-           "chmod -x gerewritedbroot; "
-           "chmod -x gekmlgrabber; "
-           "chmod -x geportableglobebuilder; "
-           "chmod -x geportableglobepacker; "
+           "chmod a-x gepolygontoqtnodes; "
+           "chmod a-x gekmlgrabber; "
+           "chmod a-x geportableglobebuilder; "
+           "chmod a-x geportableglobepacker; "
            "cd /opt/google/gehttpd/cgi-bin; "
-           "chmod -r globe_cutter_app.py; "
+           "chmod a-r globe_cutter_app.py; "
            "cd /opt/google/gehttpd/htdocs; "
-           "chmod -r cutter/*.html; "
-           "chmod -R -r cutter/js; ");
+           "chmod a-r cutter/*.html; "
+           "chmod -R a-r cutter/js; ");
   exit(ret_status);
 }
 
@@ -267,16 +272,15 @@ void EnableCutter() {
   // be available.
   int ret_status =
     system("cd /opt/google/bin; "
-           "chmod +x gepolygontoqtnodes; "
-           "chmod +x gerewritedbroot; "
-           "chmod +x gekmlgrabber; "
-           "chmod +x geportableglobebuilder; "
-           "chmod +x geportableglobepacker; "
+           "chmod a+x gepolygontoqtnodes; "
+           "chmod a+x gekmlgrabber; "
+           "chmod a+x geportableglobebuilder; "
+           "chmod a+x geportableglobepacker; "
            "cd /opt/google/gehttpd/cgi-bin; "
-           "chmod +r globe_cutter_app.py; "
+           "chmod a+r globe_cutter_app.py; "
            "cd /opt/google/gehttpd/htdocs; "
-           "chmod +r cutter/*.html; "
-           "chmod -R +r cutter/js; ");
+           "chmod a+r cutter/*.html; "
+           "chmod -R a+r cutter/js; ");
   exit(ret_status);
 }
 
@@ -307,6 +311,9 @@ int main(int argc, char* argv[]) {
     bool force_copy = false;
     bool vhssl = false;
     bool swaptargets = false;
+    bool enable_poisearch = false;
+    bool enable_enhancedsearch = false;
+    bool serve_wms = false;
     std::string adddb, dbdetails, deletedb, publishdb,  unpublish;
     std::string republishdb, targetdetails;
     std::string target_path, dbalias;
@@ -344,6 +351,9 @@ int main(int argc, char* argv[]) {
     options.vecOpt("pushdb", pushdbs);
     options.opt("publishdb", publishdb);
     options.flagOpt("setecdefault", ec_default_db);
+    options.flagOpt("enable_poisearch", enable_poisearch);
+    options.flagOpt("enable_enhancedsearch", enable_enhancedsearch);
+    options.flagOpt("serve_wms", serve_wms);
     options.opt("unpublish", unpublish);
     options.opt("republishdb", republishdb);
     options.flagOpt("swaptargets", swaptargets);
@@ -386,6 +396,18 @@ int main(int argc, char* argv[]) {
     }
     if (help) {
       usage(progname);
+    }
+
+    if ((enable_poisearch || enable_enhancedsearch) && !publishdb.size()) {
+      throw khException("POI search and enhanced search are only used when publishing a database.\n");
+    }
+
+    if (enable_enhancedsearch && !enable_poisearch) {
+      throw khException("Enhanced search cannot be enabled without POI search.\n");
+    }
+
+    if (serve_wms && publishdb.empty()) {
+      throw khException("serve_wms can only be used with --publishdb.\n");
     }
 
     if (disable_cutter) {
@@ -459,7 +481,7 @@ int main(int argc, char* argv[]) {
           if (!only_portables) {
             fprintf(stdout, "\nThe %Zu database(s) registered on %s\n",
                     db_infos.size(), server.c_str());
-            for (uint i = 0; i < db_infos.size(); ++i) {
+            for (unsigned int i = 0; i < db_infos.size(); ++i) {
               const FusionDbInfo& db_info = db_infos[i];
               fprintf(
                   stdout,
@@ -472,7 +494,7 @@ int main(int argc, char* argv[]) {
 
           fprintf(stdout, "\nThe %Zu portable(s) registered on %s\n",
                   portable_infos.size(), server.c_str());
-          for (uint i = 0; i < portable_infos.size(); ++i) {
+          for (unsigned int i = 0; i < portable_infos.size(); ++i) {
             const PortableInfo& portable_info = portable_infos[i];
             fprintf(stdout, "\n\tPortable: %s\n\tDescription: %s\n",
                     portable_info.path.c_str(),
@@ -482,7 +504,7 @@ int main(int argc, char* argv[]) {
           fprintf(stdout,
                   "\nThe database(s) from Fusion host %s registered on %s\n",
                   fusion_host.c_str(), server.c_str());
-          for (uint i = 0; i < db_infos.size(); ++i) {
+          for (unsigned int i = 0; i < db_infos.size(); ++i) {
             const FusionDbInfo& db_info = db_infos[i];
             if (fusion_host == db_info.fusion_hostname) {
               fprintf(stdout, "\n\tDatabase: %s\n\tDescription: %s\n",
@@ -504,7 +526,7 @@ int main(int argc, char* argv[]) {
         if (!only_portables) {
           fprintf(stdout, "\nThe %Zu database(s) published on %s\n",
                   published_db_infos.size(), server.c_str());
-          for (uint i = 0; i < published_db_infos.size(); ++i) {
+          for (unsigned int i = 0; i < published_db_infos.size(); ++i) {
             const PublishedFusionDbInfo& published_db_info =
                 published_db_infos[i];
             fprintf(stdout,
@@ -520,7 +542,7 @@ int main(int argc, char* argv[]) {
 
         fprintf(stdout, "\nThe %Zu portable(s) published on %s\n",
                 published_portable_infos.size(), server.c_str());
-        for (uint i = 0; i < published_portable_infos.size(); ++i) {
+        for (unsigned int i = 0; i < published_portable_infos.size(); ++i) {
           const PublishedPortableInfo& published_portable_info =
               published_portable_infos[i];
           fprintf(stdout,
@@ -550,7 +572,7 @@ int main(int argc, char* argv[]) {
       if (publisher_client.QueryDatabaseDetails(
               stype, dbdetails, &file_names)) {
         fprintf(stdout, "Database: %s\n", dbdetails.c_str());
-        for (uint i = 0; i < file_names.size(); ++i) {
+        for (unsigned int i = 0; i < file_names.size(); ++i) {
           fprintf(stdout, "%d.  %s\n", i+1, file_names[i].c_str());
         }
       } else {
@@ -561,7 +583,7 @@ int main(int argc, char* argv[]) {
       if (publisher_client.QueryPublishContext(
               stype, targetdetails, &publish_context)) {
         fprintf(stdout, "Publish context for target path: %s\n", targetdetails.c_str());
-        for (uint i = 0; i < publish_context.size(); ++i) {
+        for (unsigned int i = 0; i < publish_context.size(); ++i) {
           fprintf(stdout, "\t%s\n", publish_context[i].c_str());
         }
         fprintf(stdout, "\n");
@@ -634,7 +656,7 @@ int main(int argc, char* argv[]) {
       if (fusion_host.empty()) {
         SetFusionHost(&publisher_client, gedb_path, curr_host);
       }
-      if (publisher_client.PublishDatabase(gedb_path, target_path, vhname, ec_default_db)) {
+      if (publisher_client.PublishDatabase(gedb_path, target_path, vhname, ec_default_db, enable_poisearch, enable_enhancedsearch, serve_wms)) {
         fprintf(stdout, "Database successfully published.  EC Default Database: %s\n", ec_default_db ? "true" : "false");
       } else {
         throw khException(publisher_client.ErrMsg() +
@@ -687,7 +709,7 @@ int main(int argc, char* argv[]) {
       std::vector<std::string> vh_names, vh_urls;
       if (publisher_client.ListVirtualHosts(&vh_names, &vh_urls)) {
         fprintf(stdout, "Virtual Hosts ...\n");
-        for (uint i = 0; i < vh_names.size(); ++i) {
+        for (unsigned int i = 0; i < vh_names.size(); ++i) {
           fprintf(stdout, "%d. %s, %s\n", i+1, vh_names[i].c_str(),
                   vh_urls[i].c_str());
         }
@@ -828,7 +850,7 @@ int main(int argc, char* argv[]) {
                                           &searchdef_contents)) {
         fprintf(stdout, "%Zu search definition(s) registered on %s\n",
                 searchdef_names.size(), server.c_str());
-        for (uint i = 0; i < searchdef_names.size(); ++i) {
+        for (unsigned int i = 0; i < searchdef_names.size(); ++i) {
           fprintf(stdout, "\nSearch definition: %s\n\t Content:%s\n",
                   searchdef_names[i].c_str(), searchdef_contents[i].c_str());
         }
@@ -836,8 +858,8 @@ int main(int argc, char* argv[]) {
         throw khException(publisher_client.ErrMsg());
       }
     } else if (garbagecollect) {
-      uint32 delete_count = 0;
-      uint64 delete_size = 0;
+      std::uint32_t delete_count = 0;
+      std::uint64_t delete_size = 0;
       std::string server = (stype == PublisherClient::STREAM_SERVER) ?
           stream_server_url + " (stream)":
           search_server_url + " (search)";

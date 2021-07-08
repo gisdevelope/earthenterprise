@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc.
+// Copyright 2017 Google Inc. Copyright 2018 the Open GEE Contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -204,7 +204,7 @@ std::string JsonUtils::GELayersJson(
 
 std::string JsonUtils::GELayerJson(const LayerConfig& layer,
                                    const std::string& locale) {
-  LocaleConfig locale_config = layer.GetLocale(locale);
+  LocaleConfig locale_config = layer.GetLocale(locale.c_str());
 
   // Create the map of field name-value pairs for the output JSON.
   std::map<std::string, std::string> field_map;
@@ -224,7 +224,7 @@ std::string JsonUtils::GELayerJson(const LayerConfig& layer,
 std::string JsonUtils::GERasterLayerJson(
   const RasterDBRootGenConfig::Layer& layer,
   const std::string& locale) {
-  LegendLocale locale_config = layer.legend_.GetLegendLocale(locale);
+  LegendLocale locale_config = layer.legend_.GetLegendLocale(locale.c_str());
 
   // Create the map of field name-value pairs for the output JSON.
   std::map<std::string, std::string> field_map;
@@ -259,7 +259,7 @@ std::string JsonUtils::MapLayerJson(const MapLayerJSConfig::Layer& layer,
                                     const DbHeader& db_header,
                                     const std::string& locale) {
   // Get the legend for the specified locale.
-  const LegendLocale& legend_locale = layer.legend_.GetLegendLocale(locale);
+  const LegendLocale& legend_locale = layer.legend_.GetLegendLocale(locale.c_str());
   // Create the map of field name-value pairs for the output JSON.
   std::string icon_name =
       "icons/" + legend_locale.icon.GetValue().LegendHref();
@@ -295,15 +295,24 @@ std::string JsonUtils::LookAtJson(const std::string& lookAtSpec) {
   std::vector<std::string> tokens;
   TokenizeString(lookAtSpec, tokens, "|");
 
-  double altitude = strtod(tokens[2].c_str(), NULL);
-  int zoomLevel = AltitudeToZoomLevel(altitude);
-
-  // Create the map of field name-value pairs for the output JSON.
   std::map<std::string, std::string> field_map;
-  field_map["lat"] = tokens[1];
-  field_map["lng"] = tokens[0];
-  field_map["zoom"] = Itoa(zoomLevel);
-  field_map["altitude"] = DoubleToString(altitude);
+
+  if (tokens.size() >= 3) {
+    double altitude = strtod(tokens[2].c_str(), NULL);
+    int zoomLevel = AltitudeToZoomLevel(altitude);
+
+    // Create the map of field name-value pairs for the output JSON.
+    field_map["lat"] = tokens[1];
+    field_map["lng"] = tokens[0];
+    field_map["zoom"] = Itoa(zoomLevel);
+    field_map["altitude"] = DoubleToString(altitude);
+  } else {
+    int zoomLevel = AltitudeToZoomLevel(0);
+    field_map["lat"] = "0";
+    field_map["lng"] = "0";
+    field_map["zoom"] = Itoa(zoomLevel);
+    field_map["altitude"] = "0";
+  }
   return JsonObject(field_map);
 }
 

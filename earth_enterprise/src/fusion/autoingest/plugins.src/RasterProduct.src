@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +33,7 @@
 
 class RasterProductAssetImpl {
  public:
-  uint              GetMaxLevel(void) const;
+  unsigned int              GetMaxLevel(void) const;
   virtual void      AfterLoad(void);
 
   // Return the acquisition date from the Raster product.
@@ -41,7 +42,7 @@ class RasterProductAssetImpl {
   // String is of form "YYYY-MM-DD".
   // If no image date is available, returns "0000-00-00" for "unknown date".
   std::string GetAcquisitionDate(void) const {
-    std::string acquisition_date = meta.GetValue("sourcedate", kUnknownDate);
+    std::string acquisition_date = meta.GetValue("sourcedate", kUnknownDate.c_str()).toStdString();
     return acquisition_date;
   }
 };
@@ -49,7 +50,7 @@ class RasterProductAssetImpl {
 class RasterProductAssetVersionImpl {
  public:
   khExtents<double> GetExtents(void) const;
-  uint              GetMaxLevel(void) const;
+  unsigned int              GetMaxLevel(void) const;
   virtual void      AfterLoad(void);
 
   // Return the acquisition date from the Raster product.
@@ -58,7 +59,7 @@ class RasterProductAssetVersionImpl {
   // String is of form "YYYY-MM-DD".
   // If no image date is available, returns "0000-00-00" for "unknown date".
   std::string GetAcquisitionDate(void) const {
-    std::string acquisition_date = meta.GetValue("sourcedate", kUnknownDate);
+    std::string acquisition_date = meta.GetValue("sourcedate", kUnknownDate.c_str()).toStdString();
     return acquisition_date;
   }
 };
@@ -70,7 +71,7 @@ namespace {
 
 void GetProviderFromMeta(RasterProductConfig &config, khMetaData &meta) {
   if (config.provider_id_ == 0) {
-    std::string providerkey = meta.GetValue("provider");
+    std::string providerkey = meta.GetValue("provider").toUtf8().constData();
     if (!providerkey.empty()) {
       config.provider_id_ = gstProviderSet::LoadAndGetIdFromKey(providerkey);
       meta.Erase("provider");
@@ -78,9 +79,9 @@ void GetProviderFromMeta(RasterProductConfig &config, khMetaData &meta) {
   }
 }
 
-uint GetMaxLevelFromMeta(const khMetaData& meta) {
-  uint prodMaxLevel = 0;
-  FromString(meta.GetValue("maxlevel"), prodMaxLevel);
+unsigned int GetMaxLevelFromMeta(const khMetaData& meta) {
+  unsigned int prodMaxLevel = 0;
+  FromString(meta.GetValue("maxlevel").toUtf8().constData(), prodMaxLevel);
   return prodMaxLevel;
 }
 
@@ -89,10 +90,11 @@ uint GetMaxLevelFromMeta(const khMetaData& meta) {
 uint
 RasterProductAssetImpl::GetMaxLevel(void) const
 {
-  uint prodMaxLevel = GetMaxLevelFromMeta(meta);
+  unsigned int prodMaxLevel = GetMaxLevelFromMeta(meta);
   if (!prodMaxLevel) {
-    throw khException(kh::tr("Unable to get maxlevel for ")
-                      + GetRef());
+    std::string msg { kh::tr("Unable to get maxlevel for ").toUtf8().constData() };
+    msg += GetRef();
+    throw khException(msg);
   }
   return prodMaxLevel;
 }
@@ -101,7 +103,7 @@ RasterProductAssetImpl::GetMaxLevel(void) const
 khExtents<double>
 RasterProductAssetVersionImpl::GetExtents(void) const
 {
-  std::string extents = meta.GetValue("extents");
+  std::string extents = meta.GetValue("extents").toUtf8().constData();
   std::vector<std::string> coords;
   // split out coords (N,S,E,W)
   split(extents, ",", back_inserter(coords));
@@ -115,9 +117,9 @@ RasterProductAssetVersionImpl::GetExtents(void) const
 
     return khExtents<double>(NSEWOrder, N, S, E, W);
   }
-
-  throw khException(kh::tr("Unable to get extents for ")
-                    + GetRef());
+  std::string msg { kh::tr("Unable to get extents for ").toUtf8().constData() };
+  msg += GetRef();
+  throw khException(msg);
 }
 
 
@@ -133,10 +135,11 @@ void RasterProductAssetVersionImpl::AfterLoad(void) {
 uint
 RasterProductAssetVersionImpl::GetMaxLevel(void) const
 {
-  uint prodMaxLevel = GetMaxLevelFromMeta(meta);
+  unsigned int prodMaxLevel = GetMaxLevelFromMeta(meta);
   if (!prodMaxLevel) {
-    throw khException(kh::tr("Unable to get maxlevel for ")
-                      + GetRef());
+    std::string msg { kh::tr("Unable to get maxlevel for ").toUtf8().constData() };
+    msg += GetRef();
+    throw khException(msg);
   }
   return prodMaxLevel;
 }
@@ -150,9 +153,9 @@ class RasterProductAssetImplD {
 };
 
 class RasterProductAssetVersionImplD {
- protected:
-  virtual void OnStateChange(AssetDefs::State newstate,
-                             AssetDefs::State oldstate);
+ public:
+  virtual AssetDefs::State OnStateChange(AssetDefs::State newstate,
+                                         AssetDefs::State oldstate) override;
 };
 
 
@@ -203,7 +206,7 @@ RasterProductAssetImplD::HandleImportRequest(
 
 
   // get other info about our (first) source
-  uint toplevel = 0;
+  unsigned int toplevel = 0;
   khFusionURI uri = req.sources.sources.front().uri;
   std::string srcfile;
   if (uri.Valid())
@@ -217,7 +220,7 @@ RasterProductAssetImplD::HandleImportRequest(
       toplevel = rptr->maxLevel();
     } else {
       throw khException(kh::tr("Unable to open product file %1")
-                        .arg(srcfile));
+                        .arg(srcfile.c_str()));
     }
   } else {
     if (!khIsURI(srcfile) && (khExtension(srcfile) == ".pyr")) {
@@ -229,7 +232,7 @@ RasterProductAssetImplD::HandleImportRequest(
       toplevel = pyrio::FindHighestResPyramidFile(srcfile, &srcfile);
       if (!toplevel) {
         throw khException(kh::tr("Unable to find toplevel for %1")
-                          .arg(srcfile));
+                          .arg(srcfile.c_str()));
       }
     } else {
       // For mosaics that will be reprojected, this is only an
@@ -248,7 +251,7 @@ RasterProductAssetImplD::HandleImportRequest(
   // Modified FindMake to preserve fuid_resource_
   // inputs are empty for now. We'll fill them in below.
   MutableRasterProductAssetD asset =
-    RasterProductFactory::Find(assetname , req.type);
+    Find<RasterProductType>(assetname, req.type);
 
   if (asset) {
     // It is a regular (editing the same asset) or "SaveAs" re-writing request.
@@ -259,16 +262,16 @@ RasterProductAssetImplD::HandleImportRequest(
     if (product_config.fuid_resource_ == 0) {
       product_config.fuid_resource_ = asset->config.fuid_resource_;
     }
-    asset->Modify(std::vector<std::string>(), req.meta, product_config);
+    asset->Modify(std::vector<SharedString>(), req.meta, product_config);
   } else {
     // It is a "Save" or "SaveAs" request when creating a new asset.
-    asset = RasterProductFactory::Make(assetname, req.type,
-                                       std::vector<std::string>(),
+    asset = Make<RasterProductType>(assetname, req.type,
+                                       std::vector<SharedString>(),
                                        req.meta, req.config);
   }
   if (!asset) {
     throw khException(kh::tr("Unable to create %1 asset %2")
-                      .arg(ToQString(req.type), ToQString(assetname)));
+                      .arg(ToQString(req.type), ToQString(assetname.c_str())));
   }
 
 
@@ -284,11 +287,12 @@ RasterProductAssetImplD::HandleImportRequest(
 
   // Get our source asset.
   MutableAssetVersionD source =
-      SourceFactory::ReuseOrMakeAndUpdateSubAsset(asset->GetRef(),
+      ReuseOrMakeAndUpdateSubAsset<SourceType>(asset->GetRef(),
                                                   asset->type,
                                                   "source",
                                                   khMetaData(),
                                                   req.sources);
+
   asset->inputs.push_back(source->GetRef());
 
 
@@ -305,7 +309,7 @@ RasterProductAssetImplD::HandleImportRequest(
         if (!pyrio::FindHighestResMaskPyramidFile(srcfile, &maskfile)) {
           throw khException
             (kh::tr("Unable to find toplevel mask for %1")
-             .arg(srcfile));
+             .arg(srcfile.c_str()));
         }
       } else if (req.config.sourceIsProduct) {
         maskfile = khReplaceExtension(srcfile, ".kmp");
@@ -318,7 +322,9 @@ RasterProductAssetImplD::HandleImportRequest(
         }
       }
       if (!khExists(maskfile)) {
-        throw khException(kh::tr("Unable to find maskfile for ") + srcfile);
+        std::string msg { kh::tr("Unable to find maskfile for ").toUtf8().constData() };
+        msg += srcfile;
+        throw khException(msg.c_str());
       }
     } else {
       throw khException(kh::tr("havemask only supported with file sources"));
@@ -328,7 +334,7 @@ RasterProductAssetImplD::HandleImportRequest(
     SourceConfig sourceConfig;
     sourceConfig.AddFile(maskfile);
     MutableAssetVersionD masksource =
-        SourceFactory::ReuseOrMakeAndUpdateSubAsset(asset->GetRef(),
+        ReuseOrMakeAndUpdateSubAsset<SourceType>(asset->GetRef(),
                                                     asset->type,
                                                     "masksource",
                                                     khMetaData(),
@@ -337,7 +343,7 @@ RasterProductAssetImplD::HandleImportRequest(
   }
 }
 
-void
+AssetDefs::State
 RasterProductAssetVersionImplD::OnStateChange(AssetDefs::State newstate,
                                               AssetDefs::State oldstate)
 {
@@ -360,6 +366,7 @@ RasterProductAssetVersionImplD::OnStateChange(AssetDefs::State newstate,
       meta.SetValue("minlevel", tmp);
     }
   }
+  return state;
 }
 
 
@@ -380,15 +387,17 @@ RasterProductAssetVersionImplD::UpdateChildren(void)
   AssetVersion source(guard->inputvers[0]);
   std::vector<std::string> srcfiles;
   source->GetOutputFilenames(srcfiles);
-  uint32 num_sources = srcfiles.size();
+  std::uint32_t num_sources = srcfiles.size();
 
   MutableCombinedRPAssetVersionD crp =
-    CombinedRPFactory::FindMakeAndUpdateSubAsset
-      (assetRef, type, kCombinedRPSubtype,
-       inputs,
-       khMetaData(),
-       CombinedRPConfig(num_sources, config),
-       guard->inputvers);
+    FindMakeAndUpdateSubAsset<CombinedRPType>
+                  (assetRef,
+                   type,
+                   kCombinedRPSubtype,
+                   inputs,
+                   khMetaData(),
+                   CombinedRPConfig(num_sources, config),
+                   guard->inputvers);
 
   // save the location of the preview file
   meta.SetValue("preview", crp->PreviewRef());

@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +26,8 @@
 #include <cctype>
 #include <algorithm>
 #include "common/khTypes.h"
+#include <cstdint>
+#include "common/SharedString.h"
 
 template <class T>
 std::string
@@ -62,7 +65,7 @@ ToString(khTypes::StorageEnum s)
 
 inline
 std::string
-ToString(uchar c)
+ToString(unsigned char c)
 {
   std::ostringstream out;
   out << (int)c;
@@ -81,6 +84,13 @@ FromString(const std::string &str, T &val)
 
 inline
 void
+FromString(const std::string &str, SharedString &val)
+{
+  val = str;
+}
+
+inline
+void
 FromString(const std::string &str, std::string &val)
 {
   val = str;
@@ -95,7 +105,7 @@ FromString(const std::string &str, khTypes::StorageEnum &s)
 
 inline
 void
-FromString(const std::string &str, uchar &c)
+FromString(const std::string &str, unsigned char &c)
 {
   std::istringstream in(str);
   int val;

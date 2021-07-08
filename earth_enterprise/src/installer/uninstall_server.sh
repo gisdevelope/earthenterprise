@@ -61,6 +61,11 @@ main_preuninstall()
     exit 1
   fi
 
+  if is_package_installed "opengee-common" "opengee-common"; then
+    show_opengee_package_installed "uninstall" "$GEES"
+    exit 1
+  fi
+
   # check to see if GE Server processes are running
   if check_server_processes_running; then
     show_server_running_message
@@ -99,6 +104,7 @@ main_uninstall()
   remove_files_from_target
   change_publish_root_ownership
   remove_users_groups
+  if [ `command -v systemctl` ]; then systemctl daemon-reexec; fi
   show_final_success_message
 }
 
@@ -272,6 +278,8 @@ remove_files_from_target()
     rm -rf $BASEINSTALLDIR_OPT/lib
     rm -rf $BASEINSTALLDIR_OPT/gepython
     rm -rf $BASEINSTALLDIR_VAR/openssl
+
+    rm -f $BININSTALLROOTDIR/gevars.sh
   fi
 
   rm -rf $BASEINSTALLDIR_OPT/geecheck/geecheck.conf
@@ -287,8 +295,6 @@ remove_files_from_target()
   rm -f $BININSTALLPROFILEDIR/ge-server.csh
 
   rm -rf $BASEINSTALLLOGROTATEDIR/gehttpd
-
-  rm -f $BININSTALLROOTDIR/gevars.sh
 
   printf "DONE\n"
 }

@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,11 +19,15 @@
 #include <string>
 #include <utility>
 #include "common/geFilePool.h"
-#include "common/khTypes.h"
+//#include "common/khTypes.h"
+#include <cstdint>
 #include "fusion/portableglobe/servers/fileunpacker/shared/glc_reader.h"
 #include "fusion/portableglobe/servers/fileunpacker/shared/glc_unpacker.h"
 #include "server/mod_fdb/apache_fdb_reader.h"
 
+#ifdef APLOG_USE_MODULE
+APLOG_USE_MODULE(fdb);
+#endif
 
 UnpackerManager::UnpackerManager() : file_pool_(-50) {
 }

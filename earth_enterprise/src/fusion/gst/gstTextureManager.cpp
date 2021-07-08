@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,7 +49,7 @@ void ReadThread::run(void) {
   texman->readThreadFunc();
 }
 
-gstTextureManager *theTextureManager = NULL;
+gstTextureManager *theTextureManager = nullptr;
 
 gstTextureManager::gstTextureManager(int memoryCacheSize, int textureCacheSize)
     : base_texture_(),
@@ -172,7 +173,7 @@ gstStatus gstTEXFormat::CloseFile() {
   return GST_OKAY;
 }
 
-gstGeodeHandle gstTEXFormat::GetFeatureImpl(uint32 layer, uint32 id) {
+gstGeodeHandle gstTEXFormat::GetFeatureImpl(std::uint32_t layer, std::uint32_t id) {
   assert(layer < NumLayers());
   assert(layer == 0);
   assert(id < NumFeatures(layer));
@@ -180,7 +181,7 @@ gstGeodeHandle gstTEXFormat::GetFeatureImpl(uint32 layer, uint32 id) {
   return gstGeodeImpl::Create(extents_);
 }
 
-gstRecordHandle gstTEXFormat::GetAttributeImpl(uint32, uint32) {
+gstRecordHandle gstTEXFormat::GetAttributeImpl(std::uint32_t, std::uint32_t) {
   throw khException(kh::tr("No attributes available"));
 }
 
@@ -200,12 +201,12 @@ gstTextureGuard gstTextureManager::NewTextureFromPath(
   }
 
   // handle URL first since it is not a valid file system path
-  if (QString(path).startsWith("http://") ||
-      QString(path).startsWith("https://")) {
+  if (QString(path.c_str()).startsWith("http://") ||
+      QString(path.c_str()).startsWith("https://")) {
     return NewHTTPTexture(path);
   }
 
-  QString base(khBasename(path));
+  QString base(khBasename(path).c_str());
 
   bool is_mercator_imagery_project =
       khHasExtension(path, kMercatorImageryProjectSuffix);
@@ -233,9 +234,9 @@ gstTextureGuard gstTextureManager::NewTextureFromPath(
       return error_handle;
     }
   }
-  bool is_flat_imagery_asset = base.contains(kImageryAssetSuffix);
-  bool is_flat_terrain_asset = base.contains(kTerrainAssetSuffix);
-  bool is_mercator_imagery_asset = base.contains(kMercatorImageryAssetSuffix);
+  bool is_flat_imagery_asset = base.contains(kImageryAssetSuffix.c_str());
+  bool is_flat_terrain_asset = base.contains(kTerrainAssetSuffix.c_str());
+  bool is_mercator_imagery_asset = base.contains(kMercatorImageryAssetSuffix.c_str());
   if (is_flat_imagery_asset ||
       is_mercator_imagery_asset ||
       is_flat_terrain_asset) {
@@ -261,11 +262,15 @@ gstTextureGuard gstTextureManager::NewTextureFromPath(
       std::string str = path;
       str += "/" + kHeaderXmlFile;
       gstTextureGuard texture = NewPYRTexture(str, std::string());
-      *is_mercator_imagery = texture->IsMercatorImagery();
+      if (texture) {
+        *is_mercator_imagery = texture->IsMercatorImagery();
+      }
       return texture;
     } else if (base.endsWith(".xml")) {
       gstTextureGuard texture = NewPYRTexture(path, std::string());
-      *is_mercator_imagery = texture->IsMercatorImagery();
+      if (texture) {
+        *is_mercator_imagery = texture->IsMercatorImagery();
+      }
       return texture;
     }
   }
@@ -286,7 +291,7 @@ bool gstTextureManager::AddBaseTexture(gstTextureGuard texture) {
 
   // prepare our base texture
   // XXX should try to free any existing base texture memory here!!!
-  uchar* buf = new uchar[texture->cellSize()];
+  unsigned char* buf = new unsigned char[texture->cellSize()];
   if (texture->Load(TILEADDR(0, 0, 0, 0, 0), buf) == false) {
     notify(NFY_WARN, "Unable to load base texture tile!  "
            "Disabling background texture.");
@@ -303,7 +308,7 @@ bool gstTextureManager::AddBaseTexture(gstTextureGuard texture) {
     // pin down so it can never fall out of the cache
     memory_cache_->pin(0);
 
-    uint texid = BASE_IMAGE_ID;
+    unsigned int texid = BASE_IMAGE_ID;
 
     // calls FindTexture which locks textureMapMutex
     if (!bindTile(texid, 0)) {
@@ -343,7 +348,7 @@ void gstTextureManager::removeTexture(const gstTextureGuard &toRemove) {
 gstTextureGuard gstTextureManager::FindTexture(int id) {
   khLockGuard guard(textureMapMutex);
   if (id != 0) {
-    std::map<uint, gstTextureGuard>::iterator found = texture_map_.find(id);
+    std::map<unsigned int, gstTextureGuard>::iterator found = texture_map_.find(id);
     if (found != texture_map_.end())
       return found->second;
   }
@@ -371,14 +376,14 @@ int gstTextureManager::prepareBaseTexture(TexTile& tile) {
   tile.src = 0;
 
   TileExistance* te = tile_existance_cache_->fetch(tile.addr());
-  assert(te != NULL);
+  assert(te != nullptr);
 
   // reset address (if necessary)
   requested_level_ = LEVFROMADDR(te->bestAvailable);
   while (tile.lev > requested_level_)
     tile.upLevel();
 
-  uint texid;
+  unsigned int texid;
   while ((texid = base_texture_cache_->fetchAndPin(tile.addr())) == 0) {
     if (tile.upLevel() < 0) {
       notify(NFY_WARN, "Base texture should always have level 0 tile!");
@@ -421,12 +426,11 @@ void gstTextureManager::GetOverlayList(
                  khTilespace::Denormalize(tilebox.n));
   }
 
-  for (std::map<uint, gstTextureGuard>::iterator it = texture_map_.begin();
-       it != texture_map_.end(); ++it) {
-    gstTextureGuard tex = it->second;
-    if (tex && tex->enabled() && tex != base_texture_) {
-      if (tilebox.Intersect(tex->bbox()))
-        draw_list.push_back(tex);
+    for (const auto& it : texture_map_) {
+      gstTextureGuard tex = it.second;
+      if (tex && tex->enabled() && tex != base_texture_) {
+        if (tilebox.Intersect(tex->bbox()))
+          draw_list.push_back(tex);
     }
   }
 }
@@ -447,7 +451,7 @@ int gstTextureManager::prepareTexture(TexTile& tile,
   // determine what is the best tile that exists in our db
   TileExistance* te = tile_existance_cache_->fetch(tile.addr());
 
-  assert(te != NULL);
+  assert(te != nullptr);
 
   // no texture available
   if (te->bestAvailable == 0)
@@ -463,7 +467,7 @@ int gstTextureManager::prepareTexture(TexTile& tile,
   while (tile.lev > requested_level_)
     tile.upLevel();
 
-  uint texid;
+  unsigned int texid;
   TextureCache* textureCache = tile.alpha() == 0 ? overlay_RGB_texture_cache_ :
                                overlay_alpha_texture_cache_;
   while ((texid = textureCache->fetchAndPin(tile.addr())) == 0) {
@@ -477,7 +481,7 @@ int gstTextureManager::prepareTexture(TexTile& tile,
   return tile.lev;
 }
 
-void gstTextureManager::recycleTexture(uint64 addr) {
+void gstTextureManager::recycleTexture(std::uint64_t addr) {
   TextureCache* texture_cache;
   if (SRCFROMADDR(addr) == 0) {
     texture_cache = base_texture_cache_;
@@ -496,12 +500,12 @@ void gstTextureManager::recycleTexture(uint64 addr) {
 
 // this is a callback, triggered by the gstCache object
 // it will get called when the requested object is not in the cache
-bool gstTextureManager::bindTile(uint& reuseID, const uint64& addr) {
+bool gstTextureManager::bindTile(unsigned int& reuseID, const std::uint64_t& addr) {
   // has this tile been loaded yet by our read thread?
-  uchar* buf = memory_cache_->fetchAndPin(addr);
+  unsigned char* buf = memory_cache_->fetchAndPin(addr);
 
   // Nope, queue it up to be loaded
-  if (buf == NULL) {
+  if (buf == nullptr) {
     if (requested_level_ == LEVFROMADDR(addr)) {
       readQueue.push(addr);
       render_unfinished_++;
@@ -510,7 +514,7 @@ bool gstTextureManager::bindTile(uint& reuseID, const uint64& addr) {
   }
 
   // do we need a new texid, or just re-use an old one?
-  uint texid = (reuseID == 0) ? texture_number_++ : reuseID;
+  unsigned int texid = (reuseID == 0) ? texture_number_++ : reuseID;
   texture_cache_histogram_->add(texid - BASE_IMAGE_ID);
 
 
@@ -582,8 +586,8 @@ bool gstTextureManager::bindTile(uint& reuseID, const uint64& addr) {
 void gstTextureManager::readThreadFunc() {
   int idx = 0;
   int qsz = 0;
-  uchar* next_buffer = NULL;
-  uint64 addr;
+  unsigned char* next_buffer = nullptr;
+  std::uint64_t addr;
 
   while (true) {
     addr = readQueue.pop();
@@ -596,8 +600,8 @@ void gstTextureManager::readThreadFunc() {
       gstTextureGuard tex = FindTexture(SRCFROMADDR(addr));
       assert(tex);
 
-      if (next_buffer == NULL) {
-        next_buffer = new uchar[tex->cellSize()];
+      if (next_buffer == nullptr) {
+        next_buffer = new unsigned char[tex->cellSize()];
         notify(NFY_VERBOSE,
                "(%d) New tex buffer [%d] sz=%d c:%d r:%d l:%d s:%d",
                qsz, idx, tex->cellSize(), COLFROMADDR(addr),
@@ -616,7 +620,7 @@ void gstTextureManager::readThreadFunc() {
 //
 // this is a callback, triggered by the tileExistanceCache
 // when the requested tile is no longer in the cache
-bool gstTextureManager::findTile(TileExistance* &reuse, const uint64& addr) {
+bool gstTextureManager::findTile(TileExistance* &reuse, const std::uint64_t& addr) {
   if (!reuse)
     reuse = new TileExistance;
 

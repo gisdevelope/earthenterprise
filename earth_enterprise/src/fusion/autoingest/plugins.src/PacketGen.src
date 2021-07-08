@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,63 +38,25 @@ class PacketGenExtraUpdateArg {
  public:
   std::vector<const InsetInfo<ProductAssetVersion>*> insetInfo;
   std::vector<const PacketGenInfo *> genInfo;
+  std::shared_ptr<OverlapCalculator<ProductAssetVersion>> calc;
 };
-
 
 // ===== PacketGenAssetD.cpp =====
 #include <autoingest/sysman/plugins/PacketLevelAssetD.h>
 #include <autoingest/plugins/RasterProductAsset.h>
 #include <autoingest/plugins/MercatorRasterProductAsset.h>
-
-
-
-template
-MutablePacketGenAssetVersionD
-PacketGenFactory::ReuseOrMakeAndUpdate(
-    const std::string &ref_ , AssetDefs::Type type_,
-    const khMetaData &meta_,
-    const PacketGenConfig& config_,
-    const PacketGenExtraUpdateArg<RasterProductAssetVersion> &extra);
-
-template
-MutablePacketGenAssetVersionD
-PacketGenFactory::ReuseOrMakeAndUpdate(
-    const std::string &ref_ , AssetDefs::Type type_,
-    const khMetaData &meta_,
-    const PacketGenConfig& config_,
-    const PacketGenExtraUpdateArg<MercatorRasterProductAssetVersion> &extra);
-
-template
-MutablePacketGenAssetVersionD
-PacketGenFactory::ReuseOrMakeAndUpdateSubAsset(
-    const std::string &parentAssetRef,
-    AssetDefs::Type type_,
-    const std::string &basename,
-    const khMetaData &meta_,
-    const PacketGenConfig& config_,
-    const PacketGenExtraUpdateArg<RasterProductAssetVersion> &extra);
-
-template
-MutablePacketGenAssetVersionD
-PacketGenFactory::ReuseOrMakeAndUpdateSubAsset(
-    const std::string &parentAssetRef,
-    AssetDefs::Type type_,
-    const std::string &basename,
-    const khMetaData &meta_,
-    const PacketGenConfig& config_,
-    const PacketGenExtraUpdateArg<MercatorRasterProductAssetVersion> &extra);
+#include <memory>
 
 template <typename ProductAssetVersion>
 void PacketGenAssetVersionImplD::UpdateChildren(
     const PacketGenExtraUpdateArg<ProductAssetVersion> &extra) {
   std::string assetRef = GetAssetRef();
-
-  uint numLevels = config.coverage.numLevels();
+  unsigned int numLevels = config.coverage.numLevels();
   if (numLevels == 0) {
     throw khException(kh::tr("Internal Error: No levels to build"));
   }
 
-  uint numInsets = extra.insetInfo.size();
+  unsigned int numInsets = extra.insetInfo.size();
   if (numInsets == 0) {
     throw khException(kh::tr("Internal Error: No insets"));
   }
@@ -104,27 +67,25 @@ void PacketGenAssetVersionImplD::UpdateChildren(
   // Create my children giving them each a different level
   // Go from end to begin so we can use the results from one level to make
   // the next lower resolution level
-  uint level = config.coverage.endLevel();
+  unsigned int level = config.coverage.endLevel();
   while (level > config.coverage.beginLevel()) {
     --level;
 
     // Determine which insets intersect us at this level
     const khLevelCoverage levCov(config.coverage.levelCoverage(level));
-    std::vector<uint> neededIndexes;
+    std::vector< unsigned int>  neededIndexes;
+
     neededIndexes.reserve(numInsets);
-    if (type == AssetDefs::Imagery) {
-      FindNeededImageryInsets(khInsetCoverage(levCov),
-                              extra.insetInfo, numInsets,
-                              neededIndexes,
-                              config.beginMinifyLevel,
-                              config.endMinifyLevel);
-    } else {
-      FindNeededTerrainInsets(khInsetCoverage(levCov),
-                              extra.insetInfo, numInsets,
-                              neededIndexes,
-                              config.beginMinifyLevel,
-                              config.endMinifyLevel);
-    }
+    auto gencov = khInsetCoverage(levCov);
+    overlapEnvelope<ProductAssetVersion> env(
+        type,
+        extra.insetInfo,
+        numInsets,
+        config.beginMinifyLevel,
+        config.endMinifyLevel,
+        level);
+    extra.calc->setEnvelope(env);
+    neededIndexes = std::move(extra.calc->GetOverlapForLevel(gencov));
 
     // Build most of PacketLevelConfig
     PacketLevelConfig packetLevelConfig;
@@ -142,7 +103,7 @@ void PacketGenAssetVersionImplD::UpdateChildren(
         packetLevelConfig.decimate   = true;
         packetLevelConfig.sampleSize = TmeshQuadnodeResolution;
       } else {
-        uint diff = level - config.beginSimplifyLevel;
+        unsigned int diff = level - config.beginSimplifyLevel;
         switch (diff) {
           case 0:
             // decimate from 16x16 samples (4 @ 9x9 tmeshes)
@@ -163,7 +124,7 @@ void PacketGenAssetVersionImplD::UpdateChildren(
       }
     }
 
-    std::vector<std::string> levInputs;
+    std::vector<SharedString> levInputs;
     std::vector<AssetVersion> levInputVers;
     if (!packetLevelConfig.minify) {
       // ***** Normal Blend *****
@@ -180,19 +141,22 @@ void PacketGenAssetVersionImplD::UpdateChildren(
       levInputVers.reserve(neededIndexes.size());
       packetLevelConfig.insets.reserve(neededIndexes.size());
       packetLevelConfig.attributions.reserve(neededIndexes.size());
-      for (std::vector<uint>::const_iterator idx = neededIndexes.begin();
-           idx != neededIndexes.end(); ++idx) {
-        const InsetInfo<ProductAssetVersion> &inset(*extra.insetInfo[*idx]);
+
+      for (const auto& idx : neededIndexes) {
+        const InsetInfo<ProductAssetVersion> &inset(*extra.insetInfo[idx]);
         levInputs.push_back(inset.combinedrp_->GetRef());
         levInputVers.push_back(inset.combinedrp_);
         packetLevelConfig.insets.push_back
           (PacketLevelConfig::Inset(inset.dataRPFile,
                                     inset.alphaRPFile,
-                                    std::string(), /* cached blend */
-                                    std::string()  /* cached blend alpha */));
+                                    SharedString(), /* cached blend */
+                                    SharedString()  /* cached blend alpha */));
+        std::string acquisitionDate = inset.resource_->GetAcquisitionDate();//.toStdString();
+
         packetLevelConfig.attributions.push_back
           (PacketLevelConfig::Attribution(
               inset.dataRPFile,
+              acquisitionDate,
               inset.combinedrp_->config.fuid_resource_));
       }
     } else {
@@ -213,117 +177,85 @@ void PacketGenAssetVersionImplD::UpdateChildren(
         ((level > config.beginMinifyLevel) &&
          (level <= config.endMinifyLevel));
 
-      const uint minifySrcLevel = level + 1;
-      bool highestResMinify = (level+1 == config.endMinifyLevel);
+      const unsigned int minifySrcLevel = level + 1;
 
       // for attribution we care about everybody
       packetLevelConfig.attributions.reserve(neededIndexes.size() + 1);
-      for (std::vector<uint>::const_iterator idx = neededIndexes.begin();
-           idx != neededIndexes.end(); ++idx) {
-        const InsetInfo<ProductAssetVersion> &inset(*extra.insetInfo[*idx]);
+      for (const auto& idx : neededIndexes) {
+        const InsetInfo<ProductAssetVersion> &inset(*extra.insetInfo[idx]);
+        std::string acquisitionDate = inset.resource_->GetAcquisitionDate();
         packetLevelConfig.attributions.push_back
           (PacketLevelConfig::Attribution(
               inset.dataRPFile,
+              acquisitionDate,
               inset.combinedrp_->config.fuid_resource_));
       }
 
 
       // for insets we only care about those that have done work at
       // minifySrcLevel
-      std::vector<uint> mergeIndexes;
+      std::vector< unsigned int>  mergeIndexes;
       mergeIndexes.reserve(neededIndexes.size());
-      for (std::vector<uint>::const_iterator idx = neededIndexes.begin();
-           idx != neededIndexes.end(); ++idx) {
-        if (extra.genInfo[*idx]->coverage.hasLevel(minifySrcLevel)) {
-          mergeIndexes.push_back(*idx);
+
+      for (const auto& idx : neededIndexes) {
+        if (extra.genInfo[idx]->coverage.hasLevel(minifySrcLevel)) {
+          mergeIndexes.push_back(idx);
         }
       }
 
       // populate inputs and inputVers & config.insets
-      levInputs.reserve(mergeIndexes.size() * 2 + 1);
-      levInputVers.reserve(mergeIndexes.size() * 2 + 1);
       packetLevelConfig.insets.reserve(mergeIndexes.size() + 1);
-      for (std::vector<uint>::const_iterator idx = mergeIndexes.begin();
-           idx != mergeIndexes.end(); ++idx) {
-        const InsetInfo<ProductAssetVersion> &inset(*extra.insetInfo[*idx]);
-        const PacketGenInfo &genInfo(*extra.genInfo[*idx]);
+      packetLevelConfig.insets.resize(mergeIndexes.size());
+      int threadsToUse = MiscConfig::Instance().PackGenAnalysisThreads;
+      levInputs.resize(mergeIndexes.size() * 2 + 1);
+      levInputVers.resize(mergeIndexes.size() * 2 + 1);
+
+      // Run the following loop in parallel using the amount of threads set in misc.xml.
+      #pragma omp parallel for schedule(static) num_threads(threadsToUse)
+      for (size_t merge_idx = 0; merge_idx < mergeIndexes.size(); ++merge_idx) {
+        const InsetInfo<ProductAssetVersion> &inset(*extra.insetInfo[mergeIndexes[merge_idx]]);
+        const PacketGenInfo &genInfo(*extra.genInfo[mergeIndexes[merge_idx]]);
+        int inputs_idx = merge_idx*2;
+        levInputs[inputs_idx] = (inset.combinedrp_).Ref();
+        levInputVers[inputs_idx] = inset.combinedrp_;
         AssetVersion blendVer;
+
         if (!inset.alphaRPFile.empty() &&
             (genInfo.packetLevels.size() > minifySrcLevel)) {
           blendVer = genInfo.packetLevels[minifySrcLevel];
         }
 
-        if (!blendVer) {
-          // This inset doesn't have a cached blend file. This
+        SharedString cached_blend;
+        SharedString cached_blend_alpha;
+        if (blendVer) {
+          // This covers two cases:
+          // 1) If level+1 == config.endMinifyLevel:
+          //   This is the first merge (from cached blends)
+          //   It is possible that some of the cached blends are only
+          //   partially populated. So we pull from both the cached
+          //   blend and the product.
+          // 2) Otherwise:
+          //   This is a subsequent merge (from cached merges) It's
+          //   possible that earlier merges also short circuited the
+          //   merge with opaque top tiles. So we may need to pull
+          //   from the product too.
+          // If we do not enter this if statment, then
+          // this inset doesn't have a cached blend file. This
           // will only happen for things that have no alpha mask.
           // In these cases we pull directly from the product. It
           // will also happen for the last thing on the stack who
           // hasn't had his blendvers filled in yet.
-          levInputs.push_back(inset.combinedrp_->GetRef());
-          levInputVers.push_back(inset.combinedrp_);
-
-          packetLevelConfig.insets.push_back
-            (PacketLevelConfig::Inset(
-                inset.dataRPFile,
-                inset.alphaRPFile,
-                std::string(), /* cached blend */
-                std::string()  /* cached blend alpha */));
-        } else if (highestResMinify) {
-          // This is the first merge (from cached blends)
-          // It is possible that some of the cached blends are only
-          // partially populated. So we pull from both the cached
-          // blend and the product
-          levInputs.push_back(inset.combinedrp_->GetRef());
-          levInputVers.push_back(inset.combinedrp_);
-          levInputs.push_back(blendVer.Ref());
-          levInputVers.push_back(blendVer);
-
-          // Note: Before creating a merge inset, we check if the cached alpha
-          // blend directory exists for the asset since in GEE-5.x we need to
-          // pick up the GEE-4.x Imagery/Terrain Projects (the PacketLevel
-          // assets) that have no alpha blend cached.
-          const std::string cache_alpha_path =
-              blendVer->GetOutputFilename(0) + "/cache_alpha.pack";
-          const bool cache_alpha_exist = khExists(cache_alpha_path);
-
-          packetLevelConfig.insets.push_back
-            (PacketLevelConfig::Inset(
-                inset.dataRPFile,
-                inset.alphaRPFile,
-                blendVer.Ref(), /* cached blend */
-                cache_alpha_exist ?
-                    blendVer.Ref() : std::string() /* cached blend alpha */));
-        } else {
-          // This is a subsequent merge (from cached merges) It's
-          // possible that earlier merges also short circuited the
-          // merge with opaque top tiles. So we may need to pull
-          // from the product too.
-
-          // NOTE: For now this case should be identical to the
-          // one above. Maybe later we can put some more smarts
-          // here to limit dependencies on the products?
-
-          levInputs.push_back(inset.combinedrp_->GetRef());
-          levInputVers.push_back(inset.combinedrp_);
-          levInputs.push_back(blendVer.Ref());
-          levInputVers.push_back(blendVer);
-
-          // Note: Before creating a merge inset, we check if the cached alpha
-          // blend directory exists for the asset since in GEE-5.x we need to
-          // pick up the GEE-4.x Imagery/Terrain Projects (the PacketLevel
-          // assets) that have no alpha blend cached.
-          const std::string cache_alpha_path =
-              blendVer->GetOutputFilename(0) + "/cache_alpha.pack";
-          const bool cache_alpha_exist = khExists(cache_alpha_path);
-
-          packetLevelConfig.insets.push_back
-            (PacketLevelConfig::Inset(
-                inset.dataRPFile,
-                inset.alphaRPFile,
-                blendVer.Ref(), /* cached blend */
-                cache_alpha_exist ?
-                    blendVer.Ref() : std::string()  /* cached blend alpha */));
+          levInputs[inputs_idx+1] = blendVer.Ref();
+          levInputVers[inputs_idx+1] = blendVer;
+          cached_blend_alpha = blendVer.Ref();
+          cached_blend = blendVer.Ref();
         }
+        packetLevelConfig.insets[merge_idx] =
+            PacketLevelConfig::Inset(
+                inset.dataRPFile,
+                inset.alphaRPFile,
+                cached_blend,
+                cached_blend_alpha);
       }
 
       if (config.cacheRaster) {
@@ -335,33 +267,26 @@ void PacketGenAssetVersionImplD::UpdateChildren(
         }
         AssetVersion prevLevelVer(kids.back());
 
-        levInputs.push_back(prevLevelVer.Ref());
-        levInputVers.push_back(prevLevelVer);
-
-        // Note: Before creating a merge inset, we check if the cached alpha
-        // blend directory exists for the asset since in GEE-5.x we need to
-        // pick up the GEE-4.x Imagery/Terrain Projects (the PacketLevel
-        // assets) that have no alpha blend cached.
-        const std::string cache_alpha_path =
-            prevLevelVer->GetOutputFilename(0) + "/cache_alpha.pack";
-        const bool cache_alpha_exist = khExists(cache_alpha_path);
+        levInputs.back() = prevLevelVer.Ref();
+        levInputVers.back() = prevLevelVer;
 
         packetLevelConfig.insets.push_back
           (PacketLevelConfig::Inset(
               std::string() /* dataRP */,
               std::string() /* alphaRP */,
               prevLevelVer.Ref(), /* cached blend */
-              cache_alpha_exist ?
-                  prevLevelVer.Ref() : std::string() /* cached blend alpha */));
+              prevLevelVer.Ref() /* cached blend alpha */));
       }
 
+      levInputs.erase(std::remove(levInputs.begin(), levInputs.end(), ""), levInputs.end());
+      levInputVers.erase(std::remove(levInputVers.begin(), levInputVers.end(), AssetVersion()), levInputVers.end());
     }
 
     // get child asset ver
     char subname[32];
     snprintf(subname, sizeof(subname), "packlevel%02d", level);
     MutableAssetVersionD packLevelVer =
-      PacketLevelFactory::ReuseOrMakeAndUpdateSubAsset
+      ReuseOrMakeAndUpdateSubAsset<PacketLevelType>
       (assetRef, type,
        subname,
        levInputs,
@@ -376,4 +301,7 @@ void PacketGenAssetVersionImplD::UpdateChildren(
   AddChildren(kids);
 }
 
-
+template PacketGenAssetVersionD
+PacketGenAssetImplD::MyUpdate<RasterProductAssetVersion>(bool &needed, const PacketGenExtraUpdateArg<RasterProductAssetVersion> &extra) const;
+template PacketGenAssetVersionD
+PacketGenAssetImplD::MyUpdate<MercatorRasterProductAssetVersion>(bool &needed, const PacketGenExtraUpdateArg<MercatorRasterProductAssetVersion> &extra) const;

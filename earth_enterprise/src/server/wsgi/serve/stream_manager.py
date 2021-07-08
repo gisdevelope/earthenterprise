@@ -1,6 +1,7 @@
-#!/usr/bin/python
+#!/usr/bin/env python2.7
 #
 # Copyright 2017 Google Inc.
+# Copyright 2018 Open GEE Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,13 +54,14 @@ class StreamManager(object):
     self.server_hostname = utils.GetServerHost()
 
     # Init PostgresManager.
-    self._host = "localhost"
     self._database = "gestream"
     self._db_user = "geuser"
     postgres_prop = postgres_properties.PostgresProperties()
     self._port = postgres_prop.GetPortNumber()
+    self._host = postgres_prop.GetHost()
+    self._pass = postgres_prop.GetPassword()
     self.stream_db = postgres_manager.PostgresConnection(
-        self._database, self._db_user, self._host, self._port, logger)
+        self._database, self._db_user, self._host, self._port, self._pass, logger)
 
   def DbQuery(self, query_string, parameters=None):
     """Handles DB query request.

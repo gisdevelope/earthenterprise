@@ -1,6 +1,7 @@
-#!/usr/bin/python
+#!/usr/bin/env python2.7
 #
 # Copyright 2017 Google Inc.
+# Copyright 2018 Open GEE Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,15 +44,16 @@ class SnippetsDbManager(object):
     super(SnippetsDbManager, self).__init__()
 
     # Init database connection.
-    self._host = "localhost"
     self._snippets_db_name = "geendsnippet"
     self._db_user = "geuser"
     postgres_prop = postgres_properties.PostgresProperties()
     self._port = postgres_prop.GetPortNumber()
+    self._host = postgres_prop.GetHost()
+    self._pass = postgres_prop.GetPassword()
 
     # Create DB connection to gesnippets database.
     self._snippets_db_connection = postgres_manager.PostgresConnection(
-        self._snippets_db_name, self._db_user, self._host, self._port, logger)
+        self._snippets_db_name, self._db_user, self._host, self._port, self._pass, logger)
 
   def _DbQuery(self, query_string, parameters=None):
     """Handles DB query request to gesnippets database.

@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +35,14 @@ class gstGeometryImpl : public khRefCounter {
     Point(float _x, float _y) : x(_x), y(_y) {}
   };
 
+  // determine amount of memory used by gstGeometryImpl
+  std::uint64_t GetSize() {
+    return sizeof(type_)
+    + sizeof(origin_)
+    + sizeof(points_)
+    + sizeof(lengths_);
+  }
+
   static gstGeometryHandle Create(gstGeodeHandle g) {
     return khRefGuardFromNew(new gstGeometryImpl(g));
   }
@@ -53,7 +62,7 @@ class gstGeometryImpl : public khRefCounter {
   gstPrimType type_;
   Point origin_;
   std::vector<Point> points_;
-  std::vector<uint> lengths_;
+  std::vector< unsigned int>  lengths_;
 
   DISALLOW_COPY_AND_ASSIGN(gstGeometryImpl);
 };

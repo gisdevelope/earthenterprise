@@ -1,4 +1,4 @@
-%define apache_ver   2.2.29
+%define apache_ver   2.4.46
 %define mm_ver       1.4.2
 %define debug_package %{nil}
 
@@ -247,8 +247,6 @@ rm -rf $RPM_BUILD_ROOT%{bindir}/htcacheclean
 rm -rf $RPM_BUILD_ROOT%{bindir}/htdbm
 rm -rf $RPM_BUILD_ROOT%{bindir}/httxt2dbm
 rm -rf $RPM_BUILD_ROOT%{bindir}/logresolve
-rm -rf $RPM_BUILD_ROOT%{bindir}/rotatelogs  # we need to enable this - need to change
-                                              # the conf file
 rm -rf $RPM_BUILD_ROOT%{docdir}/apache_pb.png
 rm -rf $RPM_BUILD_ROOT%{docdir}/apache_pb22.gif
 rm -rf $RPM_BUILD_ROOT%{docdir}/apache_pb22.png

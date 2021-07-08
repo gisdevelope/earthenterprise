@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,18 +53,18 @@ gstJobStats* job_stats = new gstJobStats("GECOMBINETERRAIN", JobNames, 3);
 
 namespace {
 
-const uint32 kDefaultNumCPUs = 1;
+const std::uint32_t kDefaultNumCPUs = 1;
 
 // Number of cache blocks per filebundle.
-const uint32 kDefaultReadCacheBlocks = 5;
+const std::uint32_t kDefaultReadCacheBlocks = 5;
 
 // Optimal Read cache block size.
-const uint32 kDefaultReadCacheBlockKilobyteSize = 64;
+const std::uint32_t kDefaultReadCacheBlockKilobyteSize = 64;
 
-const uint32 kDefaultSortBufferMegabytes = 512;
+const std::uint32_t kDefaultSortBufferMegabytes = 512;
 
 // Assume 4GB is the min recommended.
-const uint64 kDefaultMinMemoryAssumed = 4000000000U;
+const std::uint64_t kDefaultMinMemoryAssumed = 4000000000U;
 
 const static std::string taskName = "gecombinterrain";
 
@@ -78,7 +79,7 @@ void usage(const std::string &progn, const char *msg = 0, ...) {
 
   fprintf(
       stderr,
-      "\nusage: %s --indexversion <ver> [--numcpus <num>] "
+      "\nusage: %s --indexversion <ver> [--numcpus/--numCompressThreads <num>] "
       "[--read_cache_max_blocks <num>\n"
       "--output <outdir> <index1> [<index2> ...]\n"
       "   Terrain packets are merged from the specified index(es)\n"
@@ -88,7 +89,9 @@ void usage(const std::string &progn, const char *msg = 0, ...) {
       "      --help | -?:  Display this usage message\n"
       "      --sortbuf <buffer_size>: size of packet index sort buf in MB\n"
       "        (default %u)\n"
-      "      --numcpus:    Number of CPUs to use (default %u)\n"
+      "      --numCompressThreads:    Number of CPUs/threads to use \n("
+      "        defaults to systemrc, then to number of CPUs available)\n"
+      "      --numcpus: deprecated in favor of --numCompressThreads\n"
       "      --read_cache_max_blocks: Number of read cache blocks for each\n"
       "                              terrain resource (between 0 and 1024)\n"
       "                              Read caching is DISABLED if num < 2.\n"
@@ -97,7 +100,7 @@ void usage(const std::string &progn, const char *msg = 0, ...) {
       "                               between 1 and 1024 (recommend set "
       "                               num to a power of 2) (default %u)\n"
       "\n",
-      progn.c_str(), kDefaultSortBufferMegabytes, kDefaultNumCPUs,
+      progn.c_str(), kDefaultSortBufferMegabytes, 
       kDefaultReadCacheBlocks, kDefaultReadCacheBlockKilobyteSize);
   exit(1);
 }
@@ -129,7 +132,7 @@ class TranslatingTerrainTraverser : public MergeSource<TerrainQuadsetItem> {
     {
       const geindex::IndexBundleReader &reader =
         source_traverser_.GetIndexBundleReader();
-      for (uint32 p = 0; p < reader.PacketFileCount(); ++p) {
+      for (std::uint32_t p = 0; p < reader.PacketFileCount(); ++p) {
         std::string packetfile = reader.GetPacketFile(p);
         // skip removed packetfiles (delta index)
         if (packetfile.empty()) {
@@ -163,7 +166,7 @@ class TranslatingTerrainTraverser : public MergeSource<TerrainQuadsetItem> {
       QuadtreePath qt_path = source_traverser_.Current().qt_path();
       ++source_index_;
 
-      uint32 fileNum = source_current.dataAddress.fileNum;
+      std::uint32_t fileNum = source_current.dataAddress.fileNum;
       if (fileNum >= tokens_.size()) {
         throw khSimpleException("TranslatingTerrainTraverser::Advance(): ")
           << "fileNum(" << fileNum
@@ -214,10 +217,13 @@ int main(int argc, char **argv) {
     std::string outdir;
     int index_version = 0;
     int sortbuf = kDefaultSortBufferMegabytes;
-    uint32 numcpus = kDefaultNumCPUs;
+    
+    //initialize to 0 to make it easier to determine if parameter was passed
+    std::uint32_t numcpus = 0,
+           numCompressThreads = 0;
     PERF_CONF_LOGGING( "proc_exec_config_default_numcpus", taskName, numcpus );
-    uint32 read_cache_max_blocks = kDefaultReadCacheBlocks;
-    uint32 read_cache_block_size = kDefaultReadCacheBlockKilobyteSize;
+    std::uint32_t read_cache_max_blocks = kDefaultReadCacheBlocks;
+    std::uint32_t read_cache_block_size = kDefaultReadCacheBlockKilobyteSize;
 
     khGetopt options;
     options.flagOpt("help", help);
@@ -225,35 +231,80 @@ int main(int argc, char **argv) {
     options.opt("output", outdir);
     options.opt("indexversion", index_version);
     options.opt("sortbuf", sortbuf);
+    options.opt("numCompressThreads",numCompressThreads,
+               &khGetopt::RangeValidator<std::uint32_t, 1, kMaxNumJobsLimit_2>);
     options.opt("numcpus", numcpus,
-                &khGetopt::RangeValidator<uint32, 1, kMaxNumJobsLimit_2>);
+                &khGetopt::RangeValidator<std::uint32_t, 1, kMaxNumJobsLimit_2>);
     PERF_CONF_LOGGING( "proc_exec_config_cli_numcpus", taskName, numcpus );
     options.opt("read_cache_max_blocks", read_cache_max_blocks,
-                &khGetopt::RangeValidator<uint32, 0, 1024>);
+                &khGetopt::RangeValidator<std::uint32_t, 0, 1024>);
     options.opt("read_cache_block_size", read_cache_block_size,
-                &khGetopt::RangeValidator<uint32, 1, 1024>);
-
+                &khGetopt::RangeValidator<std::uint32_t, 1, 1024>);
     if (!options.processAll(argc, argv, argn)) {
       usage(progname);
     }
     if (help) {
       usage(progname);
     }
-    if (argn == argc) {
-      usage(progname, "No input indexes specified");
-    }
 
-    notify(NFY_WARN, "gecombineterrain numcpus: %llu ",
-               static_cast<long long unsigned int>(numcpus));
-    notify(NFY_WARN, "gecombineterrain CommandlineNumCPUsDefault(): %llu ",
-               static_cast<long long unsigned int>(CommandlineNumCPUsDefault()));
+    if (argn == argc) {
+      usage(progname, "No input indices specified");
+    }
+    unsigned int cmdDefaultCPUs = CommandlineNumCPUsDefault();
+    unsigned int numavailable = GetMaxNumJobs();
+
+    /* 
+        Choosing number of CPUs:
+
+        numcpus: initially, the command line parameter --numcpus
+	
+        CommandLineNumCPUsDefault(): defined in /etc/opt/google/systemrc via maxjobs tag
+
+        GetMaxNumJobs(): the number of available jobs, defined as the minimum value of either:
+        1. the currently available jobs or the default number of jobs i.e. kMaxNumJobs 
+            (is 8) multiplied by KH_MAX_NUM_JOBS_COEFF, which is a compiler option
+        2. kMaxNumJobsDefault = 8
+        3. environment variable, KH_GOOGLE_MAX_NUM_JOBS, if defined
+        4. the number of currently available cpus, obtained through sysconf
+
+        The methodology first checks if the --numcpus flag was present, if
+        it was, it will go with what was passed, no matter the number. If
+        it was not, it will take the minimum value of what is defined in the
+        systemrc file and what is currently available (values described 
+        above). If the maxjobs tag in systemrc is invalid (i.e. less than
+        1) it will default to the available CPUs.
+
+         
+        --numcpus is deprecated in favor of --numCompressThreads. One
+        or the other may be passed in, but not both.
+    */
+ 
+    if (numCompressThreads)
+    {
+       if (numcpus) {
+         usage(progname,"--numcpus deprecated in favor of --numCompressedThreads");
+       } else {
+          // if numcpus is not present, but numCompressThreads is, set
+          // numcpus equal to numCompressThreads
+          numcpus = numCompressThreads;
+       }
+    }
     
-    numcpus = std::min(numcpus, CommandlineNumCPUsDefault());
-    
+    if (!numcpus) {
+	if (cmdDefaultCPUs <= 1) {
+          cmdDefaultCPUs = numavailable;
+	}
+        numcpus = std::min(cmdDefaultCPUs,numavailable);
+    }
+   
     PERF_CONF_LOGGING( "proc_exec_vcpu_count", taskName, numcpus );
 
-    notify(NFY_WARN, "gecombineterrain actually using min numcpu: %llu ",
-               static_cast<long long unsigned int>(numcpus));
+    notify(NFY_WARN, "gecombineterrain numcpus %llu",
+           static_cast<long long unsigned int>(numcpus));
+    notify(NFY_WARN, "gecombineterrain CommandLineNumCPUsDefault(): %llu",
+           static_cast<long long unsigned int>(cmdDefaultCPUs));
+    notify(NFY_WARN, "gecombineterrain GetMaxNumJobs(): %llu",
+           static_cast<long long unsigned int>(numavailable)); 
     
     // Validate commandline options
     if (!outdir.size()) {
@@ -287,7 +338,7 @@ int main(int argc, char **argv) {
                        "to a number 2 or greater.\n", argv[0]);
     } else {
       // Get the physical memory size to help choose the read_cache_max_blocks.
-      uint64 physical_memory_size = GetPhysicalMemorySize();
+      std::uint64_t physical_memory_size = GetPhysicalMemorySize();
       PERF_CONF_LOGGING( "proc_exec_config_memsize", taskName, physical_memory_size );
       if (physical_memory_size == 0) {
         physical_memory_size = kDefaultMinMemoryAssumed;
@@ -305,8 +356,8 @@ int main(int argc, char **argv) {
 
       // Figure out the worst case size of the read cache
       // (if all of max_open_fds are open simultaneously)
-      uint64 estimated_read_cache_bytes = max_open_fds *
-        static_cast<uint64>(read_cache_max_blocks * read_cache_block_size);
+      std::uint64_t estimated_read_cache_bytes = max_open_fds *
+        static_cast<std::uint64_t>(read_cache_max_blocks * read_cache_block_size);
       notify(NFY_NOTICE,
              "Read Cache Settings: %u count %u byte blocks per resource "
              "(max files open set to %u)\n"

@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -126,7 +127,7 @@ bool PortableService::UnregisterPortable(
 //    <prefix>/<string>/<suffix> - returns false and undefined.
 // Returns whether layer_index appears to be present.
 bool PortableService::ParseLayerIndex(const std::string& path,
-                                      uint suffix_index,
+                                      unsigned int suffix_index,
                                       std::string* layer_id_str) {
   *layer_id_str = path.substr(0, suffix_index);
   size_t layer_id_index = layer_id_str->rfind("/");
@@ -424,7 +425,7 @@ int PortableService::DoPortableStatus(request_rec* r,
   data.append("<b>Globe: <i>");
   data.append(unpacker_manager_.GetPortablePath(target_path));
   data.append("</i></b>");
-  uint64 size = reader->Size();
+  std::uint64_t size = reader->Size();
   const char* units = "MB";
   float sizef = size;
   if (size < 100000000) {
@@ -454,7 +455,7 @@ void PortableService::DoStatus(std::string* data) {
   std::map<std::string, std::vector<std::string> > portable_to_targets;
   GetPortableToTargetsMap(&portable_to_targets);
   char str[256];
-  snprintf(str, sizeof(str), "%lu", portable_to_targets.size());
+  snprintf(str, sizeof(str), "%lu", static_cast<unsigned long>(portable_to_targets.size()));
   data->append("<h4>Glx(s) serving on Target(s) (");
   data->append(str);
   data->append("):</h4>");
@@ -543,6 +544,10 @@ int PortableService::DoFlatfile(request_rec* r,
   } else {
     // Tokenize first arg: e.g. f1c-03012-i.18
     TokenizeString(arg, tokens, "-");
+    if (tokens.size() < 3) {
+      ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Could not parse request.");
+      return HTTP_NOT_FOUND;
+    }
     prefix = tokens[0];
     qtnode = tokens[1];
     data_info = tokens[2];
@@ -550,6 +555,10 @@ int PortableService::DoFlatfile(request_rec* r,
     // Tokenize arg suffix: e.g. i.18
     tokens.clear();
     TokenizeString(data_info, tokens, ".");
+    if (tokens.size() < 2) {
+      ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Could not parse request suffix.");
+      return HTTP_NOT_FOUND;
+    }
     data_type = tokens[0];
     data_version = tokens[1];
   }
@@ -702,17 +711,26 @@ int PortableService::DoQuery(request_rec* r,
 
   std::string data;
   //   int x, y, z, channel;
-  uint32 x = 0;
-  uint32 y = 0;
-  uint32 z = 0;
-  uint32 channel = 0;
+  std::uint32_t x = 0;
+  std::uint32_t y = 0;
+  std::uint32_t z = 0;
+  std::uint32_t channel = 0;
   std::string qtnode = "0";
 
   if ((arg_map["request"] == "ImageryMaps") ||
       (arg_map["request"] == "VectorMapsRaster")) {
-    x = atoi(arg_map["x"].c_str());
-    y = atoi(arg_map["y"].c_str());
-    z = atoi(arg_map["z"].c_str());
+    if(arg_map["x"].empty())
+        x = atoi(arg_map["col"].c_str());
+    else
+        x = atoi(arg_map["x"].c_str());
+    if(arg_map["y"].empty())
+        y = atoi(arg_map["row"].c_str());
+    else
+        y = atoi(arg_map["y"].c_str());
+    if(arg_map["z"].empty())
+        z = atoi(arg_map["level"].c_str());
+    else
+        z = atoi(arg_map["z"].c_str());
     if (z > QuadtreePath::kMaxLevel) {
       ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r,
                     "Zoom level exceeds maximum allowed value.");

@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,28 +18,30 @@
 
 #include <unistd.h>
 
-#include <qdeepcopy.h>
-#include <qtable.h>
-#include <qmessagebox.h>
-#include <qinputdialog.h>
-#include <qfiledialog.h>
-#include <qcombobox.h>
-#include <qlineedit.h>
-#include <qpushbutton.h>
-#include <qstringlist.h>
-#include <qcolordialog.h>
-#include <qcheckbox.h>
-#include <qlabel.h>
-#include <qgroupbox.h>
-#include <qspinbox.h>
-#include <qtextedit.h>
-#include <qlayout.h>
-#include <qvalidator.h>
-#include <qtabwidget.h>
-#include <qwidgetstack.h>
-#include <qimage.h>
-#include <qdragobject.h>
-#include <qbuttongroup.h>
+
+#include <Qt/q3deepcopy.h>
+#include <Qt/q3table.h>
+
+#include <Qt/qmessagebox.h>
+#include <Qt/qinputdialog.h>
+#include <Qt/qfiledialog.h>
+#include <Qt/qcombobox.h>
+#include <Qt/qlineedit.h>
+#include <Qt/qpushbutton.h>
+#include <Qt/qstringlist.h>
+#include <Qt/qcolordialog.h>
+#include <Qt/qcheckbox.h>
+#include <Qt/qlabel.h>
+#include <Qt/qgroupbox.h>
+#include <Qt/qspinbox.h>
+#include <Qt/qtextedit.h>
+#include <Qt/qlayout.h>
+#include <Qt/qvalidator.h>
+#include <Qt/qtabwidget.h>
+#include <Qt/q3widgetstack.h>
+#include <Qt/qimage.h>
+#include <Qt/q3dragobject.h>
+#include <Qt/qbuttongroup.h>
 #include <common/khTileAddrConsts.h>
 #include "fusion/fusionui/QueryRules.h"
 #include "fusion/fusionui/SiteIcons.h"
@@ -52,6 +55,8 @@
 #include "fusion/gst/gstSource.h"
 #include "fusion/gst/gstRecordJSContext.h"
 #include "fusion/fusionui/BalloonStyleText.h"
+using QImageDrag = Q3ImageDrag;
+using QMimeSourceFactory = Q3MimeSourceFactory;
 
 enum { QueryRulesStackId = 0, JavascriptStackId = 1 };
 
@@ -98,7 +103,7 @@ SelectionRules::SelectionRules(QWidget *parent,
   if (hdr->numColumns() != 0) {
     queryTab->setEnabled(true);
     QStringList fdesc;
-    for (uint ii = 0; ii < hdr->numColumns(); ++ii)
+    for (unsigned int ii = 0; ii < hdr->numColumns(); ++ii)
       fdesc.append(hdr->Name(ii));
     queryScroller->setFieldDesc(fdesc);
   } else {
@@ -120,20 +125,20 @@ SelectionRules::SelectionRules(QWidget *parent,
   }
 
   // Calculate the recommended build level from source.
-  uint32 maxResolutionLevel =
+  std::uint32_t maxResolutionLevel =
     layer->GetSource()->RecommendedMaxResolutionLevel();
-  uint32 minResolutionLevel =
+  std::uint32_t minResolutionLevel =
     layer->GetSource()->RecommendedMinResolutionLevel();
-  uint32 efficientResolutionLevel =
+  std::uint32_t efficientResolutionLevel =
     layer->GetSource()->RecommendedEfficientResolutionLevel();
   if (maxResolutionLevel > 0) {
-    featureRecommendedResolutionLevelLabel->setText(tr(
+    featureRecommendedResolutionLevelLabel->setText(kh::tr(
       "Min/Max/Efficient resolution level: %1/%2/%3").
       arg(minResolutionLevel).
       arg(maxResolutionLevel).
       arg(efficientResolutionLevel));
   } else {
-    featureRecommendedResolutionLevelLabel->setText(tr(
+    featureRecommendedResolutionLevelLabel->setText(kh::tr(
       "Min/Max/Efficient resolution level: not available"));
   }
 
@@ -185,7 +190,7 @@ void SelectionRules::MoveRuleUp() {
 
 void SelectionRules::InsertFilter(const DisplayRuleConfig& cfg) {
   config.displayRules.push_back(cfg);
-  filterList->insertItem(QDeepCopy<QString>(cfg.name));
+  filterList->insertItem(Q3DeepCopy<QString>(cfg.name));
   selected_filter_ = -1;
   filterList->setSelected(filterList->numRows() - 1, true);
 }
@@ -196,12 +201,12 @@ void SelectionRules::NewRule() {
   bool ok = false;
 
   QString filter_name = QInputDialog::getText(
-      tr("New Rule"), tr("New Rule Name:"),
-      QLineEdit::Normal, tr("untitled"), &ok, this);
+      kh::tr("New Rule"), kh::tr("New Rule Name:"),
+      QLineEdit::Normal, kh::tr("untitled"), &ok, this);
 
   if (ok && !filter_name.isEmpty()) {
     DisplayRuleConfig cfg;
-    cfg.name = QDeepCopy<QString>(filter_name);
+    cfg.name = Q3DeepCopy<QString>(filter_name);
     InsertFilter(cfg);
   }
 }
@@ -215,12 +220,12 @@ void SelectionRules::CopyRule() {
   bool ok = false;
 
   QString filter_name = QInputDialog::getText(
-      tr("Copy Rule"), tr("New Rule Name:"),
+      kh::tr("Copy Rule"), kh::tr("New Rule Name:"),
       QLineEdit::Normal, from_cfg.name + " (copy)", &ok, this);
 
   if (ok && !filter_name.isEmpty()) {
     DisplayRuleConfig cfg = from_cfg;
-    cfg.name = QDeepCopy<QString>(filter_name);
+    cfg.name = Q3DeepCopy<QString>(filter_name);
     // must zero out style id's
     cfg.feature.style.id = 0;
     cfg.site.style.id = 0;
@@ -271,21 +276,21 @@ void SelectionRules::RenameRule() {
   QString text = cfg.name;
   while (1) {
     bool ok = false;
-    text = QInputDialog::getText(tr("Rename Rule"),
-                                 tr("New Rule Name:"),
+    text = QInputDialog::getText(kh::tr("Rename Rule"),
+                                 kh::tr("New Rule Name:"),
                                  QLineEdit::Normal, text,
                                  &ok, this);
 
     if (ok && !text.isEmpty()) {
       if (text.find(QChar('"')) != -1) {
-        QMessageBox::critical(this, tr("Rule Name Error"),
-                              tr("Rule names cannot contain \""),
-                              tr("OK"), 0, 0, 0);
+        QMessageBox::critical(this, kh::tr("Rule Name Error"),
+                              kh::tr("Rule names cannot contain \""),
+                              kh::tr("OK"), 0, 0, 0);
 
         continue;
       }
       filterList->blockSignals(true);
-      config.displayRules[id].name = QDeepCopy<QString>(text);
+      config.displayRules[id].name = Q3DeepCopy<QString>(text);
       filterList->changeItem(text, id);
       filterList->blockSignals(false);
       break;
@@ -493,8 +498,8 @@ void SelectionRules::displayMaxBuildLevelWarning() {
     int max_recommended_level = static_cast<int>(draw_as_roads ?
         kMaxRecommendedRoadLevel : kMaxRecommendedBuildLevel);
     QString geometry_type = draw_as_roads ? "roads" : "lines and polygons";
-    QMessageBox::warning(this, tr("Max resolution level warning"),
-                         tr("Having a visibility level and a max resolution "
+    QMessageBox::warning(this, kh::tr("Max resolution level warning"),
+                         kh::tr("Having a visibility level and a max resolution "
                             "level greater than %1 for %2\n"
                             "can take a significant amount of processing "
                             "time and disk space.\n\n"
@@ -525,7 +530,7 @@ void SelectionRules::displayMaxBuildLevelWarning() {
                          arg(max_recommended_level).
                          arg(static_cast<int>(
                           pow(2, 22-max_recommended_level)*0.5)),
-                         tr("OK"), 0, 0, 0);
+                         kh::tr("OK"), 0, 0, 0);
   }
 }
 
@@ -661,8 +666,14 @@ void SelectionRules::chooseRoadShield() {
 }
 
 void SelectionRules::chooseLineLineColor() {
+  QPalette palette;
   QColor init_color = lineLineColorBtn->paletteBackgroundColor();
-  lineLineColorBtn->setPaletteBackgroundColor(chooseColor(init_color));
+
+  palette.setColor(QPalette::Button, chooseColor(init_color));
+  lineLineColorBtn->setAutoFillBackground(true);
+  lineLineColorBtn->setPalette(palette);
+  lineLineColorBtn->setFlat(true);
+  lineLineColorBtn->update();
 }
 
 void SelectionRules::choosePolygonFillColor() {
@@ -732,6 +743,8 @@ void SelectionRules::editBalloonStyleText() {
 
 QColor SelectionRules::chooseColor(QColor color) {
   QRgb init_color = color.rgb();
+  //Might need to switch to this format in the future
+  //QColor new_color = QColorDialog::getColor(init_color, (QWidget *)this, "Select Color", QColorDialog::DontUseNativeDialog);
   QRgb rgba = QColorDialog::getRgba(init_color, 0, this);
 
   return QColor(rgba);
@@ -930,8 +943,15 @@ void SelectionRules::updateLineWidgets() {
   featureMaxErrorEdit->setText(QString::number(featurecfg.maxError));
   drawAsRoadsCheck->setChecked(featurecfg.drawAsRoads);
   roadLabelTypeCombo->setCurrentItem(featurecfg.roadLabelType);
-  lineLineColorBtn->setPaletteBackgroundColor(
-      VectorToQColor(fstylecfg.lineColor));
+
+  QPalette palette;
+  palette.setColor(QPalette::Button, VectorToQColor(fstylecfg.lineColor));
+
+  lineLineColorBtn->setAutoFillBackground(true);
+  lineLineColorBtn->setPalette(palette);
+  lineLineColorBtn->setFlat(true);
+  lineLineColorBtn->update();
+
   lineLineWidthEdit->setText(QString::number(fstylecfg.lineWidth));
 
   // label widget stack
@@ -1043,7 +1063,7 @@ void SelectionRules::updateFeatureWidgets() {
   }
 }
 
-void SelectionRules::QColorToVector(QColor color, std::vector<uint>* vec) {
+void SelectionRules::QColorToVector(QColor color, std::vector< unsigned int> * vec) {
   QRgb rgb = color.rgb();
   vec->resize(4);
   (*vec)[0] = qRed(rgb);
@@ -1052,7 +1072,7 @@ void SelectionRules::QColorToVector(QColor color, std::vector<uint>* vec) {
   (*vec)[3] = qAlpha(rgb);
 }
 
-QColor SelectionRules::VectorToQColor(const std::vector<uint>& vec) {
+QColor SelectionRules::VectorToQColor(const std::vector< unsigned int> & vec) {
   QRgb rgba = (vec[3] << 24) |    // a
               (vec[0] << 16) |    // r
               (vec[1] << 8) |     // g
@@ -1145,8 +1165,11 @@ void SelectionRules::updateLineConfig() {
   featurecfg.drawAsRoads = drawAsRoadsCheck->isChecked();
   featurecfg.roadLabelType = static_cast<FeatureConfig::RoadLabelType>(
       roadLabelTypeCombo->currentItem());
+
   QColorToVector(lineLineColorBtn->paletteBackgroundColor(),
                  &fstylecfg.lineColor);
+
+
   fstylecfg.lineWidth = lineLineWidthEdit->text().toFloat();
 
   flabelcfg.labelMode = static_cast<LabelConfig::BuildMode>(
@@ -1343,11 +1366,11 @@ void SelectionRules::compileAndAccept() {
       if (!gstRecordJSContextImpl::CompileCheck(recordHeader, contextScripts,
                                                it->filter.matchScript,
                                                compilationError)) {
-        QMessageBox::critical(this, tr("JavaScript Error"),
-                              tr("JavaScript Error (%1 - filter):\n%2")
+        QMessageBox::critical(this, kh::tr("JavaScript Error"),
+                              kh::tr("JavaScript Error (%1 - filter):\n%2")
                               .arg(it->name)
                               .arg(compilationError),
-                              tr("OK"), 0, 0, 0);
+                              kh::tr("OK"), 0, 0, 0);
         return;
       }
     }
@@ -1361,11 +1384,11 @@ void SelectionRules::compileAndAccept() {
       if (!gstRecordJSContextImpl::CompileCheck(recordHeader, contextScripts,
                                                 it->feature.style.label.label,
                                                 compilationError)) {
-        QMessageBox::critical(this, tr("JavaScript Error"),
-                              tr("JavaScript Error (%1 - label):\n%2")
+        QMessageBox::critical(this, kh::tr("JavaScript Error"),
+                              kh::tr("JavaScript Error (%1 - label):\n%2")
                               .arg(it->name)
                               .arg(compilationError),
-                              tr("OK"), 0, 0, 0);
+                              kh::tr("OK"), 0, 0, 0);
         return;
       }
     }
@@ -1375,11 +1398,11 @@ void SelectionRules::compileAndAccept() {
       if (!gstRecordJSContextImpl::CompileCheck(recordHeader, contextScripts,
                                                 it->site.style.label.label,
                                                 compilationError)) {
-        QMessageBox::critical(this, tr("JavaScript Error"),
-                              tr("JavaScript Error (%1 - label):\n%2")
+        QMessageBox::critical(this, kh::tr("JavaScript Error"),
+                              kh::tr("JavaScript Error (%1 - label):\n%2")
                               .arg(it->name)
                               .arg(compilationError),
-                              tr("OK"), 0, 0, 0);
+                              kh::tr("OK"), 0, 0, 0);
         return;
       }
     }
@@ -1389,11 +1412,11 @@ void SelectionRules::compileAndAccept() {
       if (!gstRecordJSContextImpl::CompileCheck(recordHeader, contextScripts,
                                                 it->site.popupText,
                                                 compilationError)) {
-        QMessageBox::critical(this, tr("JavaScript Error"),
-                              tr("JavaScript Error (%1 - popup):\n%2")
+        QMessageBox::critical(this, kh::tr("JavaScript Error"),
+                              kh::tr("JavaScript Error (%1 - popup):\n%2")
                               .arg(it->name)
                               .arg(compilationError),
-                              tr("OK"), 0, 0, 0);
+                              kh::tr("OK"), 0, 0, 0);
         return;
       }
     }
@@ -1405,11 +1428,11 @@ void SelectionRules::compileAndAccept() {
         it != config.displayRules.end(); ++it) {
     if (it->site.enabled &&
         it->site.enablePopup &&
-        (it->site.balloonText.find('"') != -1)) {
-        QMessageBox::critical(this, tr("Error"),
-            tr("BalloonStyle Text for (%1) contains a \"\nThis is not allowed.")
+        (it->site.balloonText.indexOf('"') != -1)) {
+        QMessageBox::critical(this, kh::tr("Error"),
+            kh::tr("BalloonStyle Text for (%1) contains a \"\nThis is not allowed.")
             .arg(it->name),
-            tr("OK"), 0, 0, 0);
+            kh::tr("OK"), 0, 0, 0);
         return;
     }
   }

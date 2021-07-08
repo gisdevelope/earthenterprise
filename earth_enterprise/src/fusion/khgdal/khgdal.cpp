@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,7 +36,7 @@
 extern "C" void GDALRegister_KHM(void);
 extern "C" void GDALRegister_KHVR(void);
 void
-khGDALInit(uint32 cacheMax)
+khGDALInit(std::uint32_t cacheMax)
 {
   static bool done = false;
 
@@ -46,7 +47,7 @@ khGDALInit(uint32 cacheMax)
     GDALRegister_KHVR();
 
     if (getenv("GDAL_CACHEMAX") == NULL) {
-      if ((int64)GDALGetCacheMax64() < (int64)cacheMax) {
+      if ((std::int64_t)GDALGetCacheMax64() < (std::int64_t)cacheMax) {
         GDALSetCacheMax64(cacheMax);
       }
     }
@@ -220,14 +221,14 @@ StorageEnumFromGDT(GDALDataType type,
 
 
 void
-CalcBlockRange(const khExtents<uint32> &extents,
-               const khExtents<uint32> &inset,
-               const khSize<uint32> &insetBlocksize,
-               uint32 &beginX, uint32 &endX,
-               uint32 &beginY, uint32 &endY)
+CalcBlockRange(const khExtents<std::uint32_t> &extents,
+               const khExtents<std::uint32_t> &inset,
+               const khSize<std::uint32_t> &insetBlocksize,
+               std::uint32_t &beginX, std::uint32_t &endX,
+               std::uint32_t &beginY, std::uint32_t &endY)
 {
-  uint32 offx = inset.beginX() - extents.beginX();
-  uint32 offy = inset.beginY() - extents.beginY();
+  std::uint32_t offx = inset.beginX() - extents.beginX();
+  std::uint32_t offy = inset.beginY() - extents.beginY();
 
   beginX = offx / insetBlocksize.width;
   endX   = (offx + inset.width() + insetBlocksize.width - 1) /
@@ -239,7 +240,7 @@ CalcBlockRange(const khExtents<uint32> &extents,
 
 
 bool
-CompatiblePixelSizes(double ps1, double ps2, uint32 rasterSize)
+CompatiblePixelSizes(double ps1, double ps2, std::uint32_t rasterSize)
 {
   // check that both pixel sizes have the same sign
   if ((ps1 < 0) != (ps2 < 0))
@@ -284,10 +285,10 @@ ValidateGDALCreateFormat(const std::string &fmt)
   GDALDriverH driver = GDALGetDriverByName(fmt.c_str());
   QString msg;
   if (!driver) {
-    msg = kh::tr("%1 is not a recognized format").arg(fmt);
+    msg = kh::tr("%1 is not a recognized format").arg(fmt.c_str());
   } else if ((GDALGetMetadataItem(driver, GDAL_DCAP_CREATE, 0) == 0) &&
              (GDALGetMetadataItem(driver, GDAL_DCAP_CREATECOPY, 0) == 0)) {
-    msg = kh::tr("%1 format does not support writing").arg(fmt);
+    msg = kh::tr("%1 format does not support writing").arg(fmt.c_str());
   } else {
     return;
   }
@@ -303,13 +304,13 @@ LoadPRJFile(const std::string &fname, OGRSpatialReference &ogrSRS)
     try {
       InterpretSRSString(buf, ogrSRS);
     } catch (const std::exception &e) {
-      throw khException(kh::tr("%1: %2").arg(fname).arg(e.what()));
+      throw khException(kh::tr("%1: %2").arg(fname.c_str()).arg(e.what()));
     } catch (...) {
-      throw khException(kh::tr("%1: Unknown exception in LoadPRJFile").arg(fname));
+      throw khException(kh::tr("%1: Unknown exception in LoadPRJFile").arg(fname.c_str()));
     }
   } else {
     // more specific message will already have been emitted with NFY_WARN
-    throw khException(kh::tr("Unable to read %1").arg(fname));
+    throw khException(kh::tr("Unable to read %1").arg(fname.c_str()));
   }
 }
 
@@ -372,8 +373,8 @@ GetWKT(const OGRSpatialReference &ogrSRS)
 
 
 BufferRasterBand::BufferRasterBand(GDALDataset *ds, int gdalBand,
-                                   const uchar *const buf_,
-                                   const khSize<uint32> &rasterSize,
+                                   const unsigned char *const buf_,
+                                   const khSize<std::uint32_t> &rasterSize,
                                    khTypes::StorageEnum extractType)
     : buf(buf_),
       pixelSize(khTypes::StorageSize(extractType)) {
@@ -394,7 +395,7 @@ BufferRasterBand::BufferRasterBand(GDALDataset *ds, int gdalBand,
 }
 
 CPLErr BufferRasterBand::IReadBlock(int x, int y, void *destBuf) {
-  const uchar *srcBuf  = (buf +
+  const unsigned char *srcBuf  = (buf +
                     nRasterXSize * pixelSize * y +
                     nBlockXSize * pixelSize * x);
   memcpy(destBuf, srcBuf, nBlockXSize * pixelSize);

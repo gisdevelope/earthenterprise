@@ -68,6 +68,8 @@ print $fh <<EOF;
 #include <khFileUtils.h>
 #include <khGuard.h>
 #include <khxml/khdom.h>
+#include <memory>
+#include <autoingest/AssetRegistry.h>
 using namespace khxml;
 
 
@@ -84,9 +86,29 @@ namespace {
     void GetConfig(DOMElement *elem, $config &config);
 }
 
+
+
+namespace{
+    // Define the plugin interface for ${name}Asset. Clients can get
+    // the interface via AssetRegistry::GetPlugin.
+    auto assetPlugin =
+        std::unique_ptr<AssetRegistry<AssetImpl>::AssetPluginInterface>(
+            new AssetRegistry<AssetImpl>::AssetPluginInterface(
+                ${name}AssetImpl::NewFromDOM,
+                ${name}AssetImpl::NewInvalid
+            )
+        );
+
+    // The constructor of the PluginRegistrar takes care of registering the
+    // plugin for us. Using std::move because AssetPluginInterface disallows
+    // copying.
+    AssetRegistry<AssetImpl>::PluginRegistrar assetPluginRegistrar(
+        "${name}Asset", std::move(assetPlugin));
+}
+
 extern void FromElement(DOMElement *elem, AssetStorage &self);
 
-khRefGuard<${name}AssetImpl>
+std::shared_ptr<${name}AssetImpl>
 ${name}AssetImpl::NewFromDOM(void *e)
 {
     DOMElement *elem = (DOMElement*)e;
@@ -97,8 +119,7 @@ ${name}AssetImpl::NewFromDOM(void *e)
     return NewFromStorage(storage, config);
 }
 
-
-khRefGuard<${name}AssetImpl>
+std::shared_ptr<${name}AssetImpl>
 ${name}AssetImpl::NewInvalid(const std::string &ref)
 {
     AssetStorage storage;
@@ -108,73 +129,30 @@ ${name}AssetImpl::NewInvalid(const std::string &ref)
 }
 
 
-
-khRefGuard<${name}AssetImpl>
-${name}AssetImpl::Load(const std::string &ref)
-{
-    std::string filename = XMLFilename(ref);
-    khRefGuard<${name}AssetImpl> result;
-    time_t timestamp = 0;
-    uint64 filesize = 0;
-
-    if (khGetFileInfo(filename, filesize, timestamp) && (filesize > 0)) {
-	DOMLSParser *parser = CreateDOMParser();
-	if (parser) {
-	    khCallGuard<DOMLSParser*,bool> parserrelease(&::DestroyParser,
-							parser);
-	    DOMDocument *doc = ReadDocument(parser, filename);
-	    if (doc) {
-		try {
-		    DOMElement *top = doc->getDocumentElement();
-		    if (!top)
-			throw khException(kh::tr("No document element"));
-		    std::string tagname = FromXMLStr(top->getTagName());
-		    if (tagname != "${name}Asset")
-			throw khException(kh::tr("Expected '%1', found '%2'")
-					  .arg(ToQString("${name}Asset"),
-					       ToQString(tagname)));
-		    result = NewFromDOM(top);
-		} catch (const std::exception &e) {
-		    AssetThrowPolicy::WarnOrThrow
-		      (kh::tr("Error loading %1: %2")
-		       .arg(ToQString(filename), QString::fromUtf8(e.what())));
-		} catch (...) {
-		    AssetThrowPolicy::WarnOrThrow(kh::tr("Unable to load ")
-						  + filename);
-		}
-	    } else {
-	        AssetThrowPolicy::WarnOrThrow(kh::tr("Unable to read ")
-					      + filename);
-	    }
-        } else {
-            AssetThrowPolicy::WarnOrThrow(kh::tr("Unable to get parser for ")
-					  + filename);
-        }
-    } else {
-        AssetThrowPolicy::WarnOrThrow(kh::tr("No such file: ") + filename);
-    }
-
-
-    if (!result) {
-	result = NewInvalid(ref);
-	// leave timestamp alone
-        // if it failed but there was a vlid timestamp we want
-	// to remember the timestamp of the one that failed
-    }
-
-    // store the timestamp so the cache can check it later
-    result->timestamp = timestamp;
-    result->filesize  = filesize;
-
-    return result;
-}
-
 // ****************************************************************************
 // ***  ${name}AssetVersionImpl - Auto generated
 // ****************************************************************************
 extern void FromElement(DOMElement *elem, AssetVersionStorage &self);
 
-khRefGuard<${name}AssetVersionImpl>
+namespace{
+    // Define the plugin interface for ${name}AssetVersion. Clients can get
+    // the interface via AssetRegistry::GetPlugin.
+    auto assetVersionPlugin =
+        std::unique_ptr<AssetRegistry<AssetVersionImpl>::AssetPluginInterface>(
+            new AssetRegistry<AssetVersionImpl>::AssetPluginInterface(
+                ${name}AssetVersionImpl::NewFromDOM,
+                ${name}AssetVersionImpl::NewInvalid
+            )
+        );
+
+    // The constructor of the PluginRegistrar takes care of registering the
+    // plugin for us. Using std::move because AssetPluginInterface disallows
+    // copying.
+    AssetRegistry<AssetVersionImpl>::PluginRegistrar assetVersionPluginRegistrar(
+        "${name}AssetVersion", std::move(assetVersionPlugin));
+}
+
+std::shared_ptr<${name}AssetVersionImpl>
 ${name}AssetVersionImpl::NewFromDOM(void *e)
 {
     DOMElement *elem = (DOMElement*)e;
@@ -185,7 +163,7 @@ ${name}AssetVersionImpl::NewFromDOM(void *e)
     return NewFromStorage(storage, config);
 }
 
-khRefGuard<${name}AssetVersionImpl>
+std::shared_ptr<${name}AssetVersionImpl>
 ${name}AssetVersionImpl::NewInvalid(const std::string &ref)
 {
     AssetVersionStorage storage;
@@ -198,64 +176,6 @@ std::string ${name}AssetVersionImpl::PluginName(void) const {
   return "${name}";
 }
 
-khRefGuard<${name}AssetVersionImpl>
-${name}AssetVersionImpl::Load(const std::string &boundref)
-{
-    std::string filename = XMLFilename(boundref);
-    khRefGuard<${name}AssetVersionImpl> result;
-    time_t timestamp = 0;
-    uint64 filesize = 0;
-
-    if (khGetFileInfo(filename, filesize, timestamp) && (filesize > 0)) {
-	DOMLSParser *parser = CreateDOMParser();
-	if (parser) {
-	    khCallGuard<DOMLSParser*,bool> parserrelease(&::DestroyParser,
-							parser);
-	    DOMDocument *doc = ReadDocument(parser, filename);
-	    if (doc) {
-		try {
-		    DOMElement *top = doc->getDocumentElement();
-		    if (!top)
-			throw khException(kh::tr("No document element"));
-		    std::string tagname = FromXMLStr(top->getTagName());
-		    if (tagname != "${name}AssetVersion")
-			throw khException(kh::tr("Expected '%1', found '%2'")
-					  .arg(ToQString("${name}AssetVersion"),
-					       ToQString(tagname)));
-		    result = NewFromDOM(top);
-		} catch (const std::exception &e) {
-		    AssetThrowPolicy::WarnOrThrow
-		      (kh::tr("Error loading %1: %2")
-		       .arg(ToQString(filename), QString::fromUtf8(e.what())));
-		} catch (...) {
-		    AssetThrowPolicy::WarnOrThrow(kh::tr("Unable to load ")
-						  + filename);
-		}
-	    } else {
-	        AssetThrowPolicy::WarnOrThrow(kh::tr("Unable to read ")
-					      + filename);
-	    }
-        } else {
-            AssetThrowPolicy::WarnOrThrow(kh::tr("Unable to get parser for ")
-					  + filename);
-        }
-    } else {
-        AssetThrowPolicy::WarnOrThrow(kh::tr("No such file: ") + filename);
-    }
-
-    if (!result) {
-	result = NewInvalid(boundref);
-	// leave timestamp alone
-        // if it failed but there was a vlid timestamp we want
-	// to remember the timestamp of the one that failed
-    }
-
-    // store the timestamp so the cache can check it later
-    result->timestamp = timestamp;
-    result->filesize  = filesize;
-
-    return result;
-}
 
 EOF
 

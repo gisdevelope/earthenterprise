@@ -43,7 +43,7 @@
   artifacting occurs.
 
   - All memory allocations checked for failure; zoom() returns
-  error code. new_image() returns NULL if unable to allocate
+  error code. new_image() returns nullptr if unable to allocate
   pixel storage, even if Image struct can be allocated.
   Some assertions added.
 */
@@ -57,15 +57,10 @@
 #define M_PI     3.14159265359
 #endif
 
-//#define POINT_SAMPLE
-
-// LUT_TYPE=short and LUT_GUARD_BITS=3 [0..7] (allows floor((2^(16-1-8-LUT_GUARD_BITS) - 1)/2) support)
 #define USE_LUT
 #define LUT_TYPE short
 #define LUT_GUARD_BITS 3
 #define LUT_BINARY_POINT (8+LUT_GUARD_BITS)
-
-//#define REFLECT
 
 struct CONTRIB
 {
@@ -151,7 +146,7 @@ class CLIST
   }
 
  public:
-  int             n;              // number of contributors
+  int n;                  // number of contributors
   CONTRIB *p;             // pointer to list of coverages
 };
 
@@ -394,10 +389,6 @@ class Image
  public:
   Image(int x, int y, Pixel *d = 0, int s = 0)
   {
-#ifdef MALLOG
-    log = fopen("c:/mallog.txt", "a"); // XXX
-    fprintf(log, "\nImage::Image(%d, %d, 0x%08x, %d)\n\n", x, y, d, s);
-#endif
 
     xsize = x;
     ysize = y;
@@ -420,10 +411,6 @@ class Image
         Filter::Filter_t filterFunction = Filter::boxFilter, float filterWidth = Filter::boxSupport,
         float xo = 0.0f, float yo = 0.0f, float xs = 0.0f, float ys = 0.0f)
   {
-#ifdef MALLOG
-    log = fopen("c:/mallog.txt", "a"); // XXX
-    fprintf(log, "\nImage::Image(%d, %d, 0x%08x ... zoom)\n\n", x, y, source);
-#endif
 
     xsize = x;
     ysize = y;
@@ -439,18 +426,17 @@ class Image
     if (dynamic)
       free(data);
 
-#ifdef MALLOG
-    if (log != NULL)
-      fclose(log);
-#endif
   }
 
-  //#define QUICK 1
+  Image(const Image&) = delete;
+  Image(Image&&) = delete;
+  Image& operator=(const Image&) = delete;
+  Image& operator=(Image&&) = delete;
 
   Pixel getPixel(int x, int y)
   {
     static int yy = -1;
-    static Pixel *p = NULL;
+    static Pixel *p = nullptr;
 #ifdef QUICK
     return ((Pixel *)(((char *)data) + y*span))[x]; // not quicker of compiler can't detect constant y
 #endif
@@ -472,7 +458,7 @@ class Image
   Pixel putPixel(int x, int y, Pixel d)
   {
     static int yy = -1;
-    static Pixel *p = NULL;
+    static Pixel *p = nullptr;
 #ifdef QUICK
     return ((Pixel *)(((char *)data) + y*span))[x] = d;
 #endif
@@ -541,37 +527,7 @@ class Image
 
  private:
 
-#ifdef MALLOG
-  void * malloc(size_t size)
-  {
-    void *item = ::malloc(size);
 
-    if (log != NULL)
-      fprintf(log, "A 0x%08x %8d\n", item, size);
-
-    return item;
-  }
-  void * calloc(size_t size, size_t count)
-  {
-    void *item = ::calloc(size, count);
-
-    if (log != NULL)
-      fprintf(log, "C 0x%08x %8d (%8d * %8d)\n", item, size*count, size, count);
-
-    return item;
-  }
-  void free(void *item)
-  {
-    if (log != NULL)
-      fprintf(log, "F 0x%08x\n", item);
-
-    ::free(item);
-  }
-#endif
-
-#ifdef MALLOG
-  FILE *log;
-#endif
   int     span;           // byte offset between two scanlines
   bool dynamic;   // image data area was allocated dynamically
 };
@@ -739,7 +695,7 @@ class Resize
 
     clist[0].n = 0;
     clist[0].p = (CONTRIB *)calloc(sizeof(CONTRIB), samples*dstSize); // single large allocation
-    if (clist[0].p == NULL)
+    if (clist[0].p == nullptr)
       return -1;
 
     for (int index = 1; index < dstSize; index++)

@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +19,7 @@
 
 #ifndef FUSION_FUSIONUI_RASTERPROJECTWIDGET_H__
 #define FUSION_FUSIONUI_RASTERPROJECTWIDGET_H__
-
+#include <Qt/qobjectdefs.h>
 #include "ProjectWidget.h"
 #include <string>
 #include <autoingest/.idl/storage/AssetDefs.h>
@@ -26,8 +27,6 @@
 #include <gstBBox.h>
 #include <WidgetControllers.h>
 
-class QListView;
-class QListViewItem;
 class RasterProjectEditRequest;
 class gstDrawState;
 class LayerItemBase;
@@ -51,10 +50,10 @@ class RasterProjectWidget : public ProjectWidget {
   void RedrawPreview();
 
  private:
-  inline uint ProductToDisplayLevel(uint product_level) const {
+  inline unsigned int ProductToDisplayLevel(unsigned int product_level) const {
     return product_level - level_diff_;
   }
-  inline uint DisplayToProductLevel(uint display_level) const {
+  inline unsigned int DisplayToProductLevel(unsigned int display_level) const {
     return display_level + level_diff_;
   }
 
@@ -72,7 +71,7 @@ class RasterProjectWidget : public ProjectWidget {
     return CheckForValidDates(empty_string);
   }
   // inherited from ProjectWidget
-  virtual void ContextMenu(QListViewItem* item, const QPoint& pt, int col);
+  virtual void ContextMenu(Q3ListViewItem* item, const QPoint& pt, int col);
   virtual LayerItemBase* NewLayerItem();
   virtual LayerItemBase* NewLayerItem(const QString& assetref);
   virtual void GenericCheckboxToggled(bool state);
@@ -81,7 +80,7 @@ class RasterProjectWidget : public ProjectWidget {
   AssetDefs::Type asset_type_;
   const std::string sub_type_;
   const bool is_mercator_;
-  uint level_diff_;
+  unsigned int level_diff_;
   LayerLegend legend_config_;
   WidgetControllerManager legendManager;
 };

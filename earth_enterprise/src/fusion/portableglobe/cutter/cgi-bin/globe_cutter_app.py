@@ -1,6 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.7
 #
 # Copyright 2017 Google Inc.
+# Copyright 2020 Open GEE Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,13 +30,22 @@ import re
 import shutil
 import sys
 import time
+import ssl
 import urllib
+import urllib2
+from contextlib import closing
+
+import defusedxml.ElementTree as etree
+import xml.etree.ElementTree as etree2
 
 from common import form_wrap
 from common import postgres_manager_wrap
 import common.utils
 from core import globe_cutter
+import common.configs
 
+CONFIG_FILE = "/opt/google/gehttpd/cgi-bin/advanced_cutter.cfg"
+CONFIGS = common.configs.Configs(CONFIG_FILE)
 
 COMMAND_DIR = "/opt/google/bin"
 WEB_URL_BASE = "/cutter/globes"
@@ -91,9 +101,13 @@ DBROOT_FILE2_TEMPLATE = "%s/%%s/dbroot/dbroot_%%s_%%s" % GLOBE_ENV_DIR_TEMPLATE
 POLYGON_FILE_TEMPLATE = "%s/%%s/earth/polygon.kml" % GLOBE_ENV_DIR_TEMPLATE
 PACKET_INFO_TEMPLATE = "%s/packet_info.txt" % GLOBE_ENV_DIR_TEMPLATE
 QTNODES_FILE_TEMPLATE = "%s/qt_nodes.txt" % GLOBE_ENV_DIR_TEMPLATE
+METADATA_FILE_TEMPLATE = "%s/%%s/earth/metadata.json" % GLOBE_ENV_DIR_TEMPLATE
 
 # Disk space minimum in MB before we start sending warnings.
 DISK_SPACE_WARNING_THRESHOLD = 1000.0
+
+# Default KML namespace
+DEFAULT_KML_NAMESPACE = 'http://www.opengis.net/kml/2.2'
 
 class OsCommandError(Exception):
   """Thrown if os command fails."""
@@ -193,7 +207,16 @@ class GlobeBuilder(object):
     """Save polygon kml to a file."""
     with open(self.polygon_file, "w") as fp:
       if polygon:
-        fp.write(polygon)
+        # Check XML validity and standardize representation
+        contents = etree.fromstring(polygon)
+        # empty namespace will just contain the string "kml"
+        # otherwise, it will be in the format "{<schema>}kml"
+        ns = DEFAULT_KML_NAMESPACE
+        if len(contents.tag) > 3:
+          ns = contents.tag[1:len(contents.tag)-4]  
+        etree2.register_namespace('', ns)
+        xml = etree2.ElementTree(contents)
+        xml.write(fp, xml_declaration=True, encoding='UTF-8')
         self.Status("Saved polygon to %s" % self.polygon_file)
       else:
         self.Status("Created empty polygon file %s" % self.polygon_file)
@@ -247,14 +270,22 @@ class GlobeBuilder(object):
     postgis_polygon = "POLYGON((%s))" % postgis_polygon
     return postgis_polygon
 
-  def RewriteDbRoot(self, source):
+  def RewriteDbRoot(self, source, include_historical):
     """Executes command to rewrite the dbroot and extract the icons it uses."""
     self.Status("Rewrite dbroot ...")
+
+    historical_flag = '--disable_historical'
+    if include_historical:
+      historical_flag = ''
+
     os_cmd = ("%s/gerewritedbroot --source=\"%s\" --icon_directory=\"%s\" "
               "--dbroot_file=\"%s\" --search_service=\"%s\" "
-              "--kml_map_file=\"%s\""
+              "--kml_map_file=\"%s\" "
+              "%s"
               % (COMMAND_DIR, source, self.icons_dir, self.dbroot_file,
-                 self.search_service, self.kml_map_file))
+                 self.search_service, self.kml_map_file,
+                 historical_flag))
+
     common.utils.ExecuteCmd(os_cmd, self.logger)
     self.Status("%d icons" % len(os.listdir(self.icons_dir)))
 
@@ -277,22 +308,30 @@ class GlobeBuilder(object):
     # Run this task as a background task.
     os_cmd = ("%s/geportableglobebuilder --source=\"%s\" --default_level=%d "
               "--max_level=%d --hires_qt_nodes_file=\"%s\" "
-              "--globe_directory=\"%s\" --dbroot_file=\"%s\" >\"%s\""
+              "--globe_directory=\"%s\" --dbroot_file=\"%s\" --metadata_file=\"%s\" >\"%s\""
               % (COMMAND_DIR, source, default_level, max_level,
                  self.qtnodes_file, self.globe_dir, self.dbroot_file,
+                 self.metadata_file,
                  self.packet_info_file))
     common.utils.ExecuteCmdInBackground(os_cmd, self.logger)
 
-  def BuildMap(self, source, default_level, max_level):
+  def BuildMap(self, source, default_level, max_level, ignore_imagery_depth):
     """Executes command to cut map and save data into packet bundles."""
     self.Status("Build map ...")
+    ignore_imagery_depth_str = str()
+    if ignore_imagery_depth:
+        ignore_imagery_depth_str = "--ignore_imagery_depth"
     # Run this task as a background task.
     # Having trouble with permissions if output is redirected to a file.
-    os_cmd = ("%s/geportablemapbuilder --source=\"%s\" "
+    os_cmd = ("%s/geportablemapbuilder "
+              "%s "
+              "--source=\"%s\" "
               "--hires_qt_nodes_file=\"%s\" "
               "--map_directory=\"%s\"  --default_level=%d --max_level=%d "
-              % (COMMAND_DIR, source, self.qtnodes_file,
-                 self.globe_dir, default_level, max_level))
+              "--metadata_file=\"%s\" "
+              % (COMMAND_DIR, ignore_imagery_depth_str, source,
+                 self.qtnodes_file, self.globe_dir, default_level,
+                 max_level, self.metadata_file))
 
     common.utils.ExecuteCmdInBackground(os_cmd, self.logger)
 
@@ -320,6 +359,42 @@ class GlobeBuilder(object):
     fp.write("%s\n\n" % message)
     fp.close()
 
+  def HttpGet(self, url):
+    """Make an HTTP or HTTPS request with a context for checking or ignoring
+    certificate errors depending on Config settings.
+    """
+    context = None
+    response_data = ""
+    http_status_code = 0
+
+    try:
+      # TODO: When Python 2.7 is used on Centos6, this if version<=2.6 block can be removed
+      # and the 'else' ssl.SSLContext based block can be used instead.
+      if sys.version_info[0] == 2 and sys.version_info[1] <= 6:
+        with closing(urllib2.urlopen(url)) as fp:
+          http_status_code = fp.getcode()
+          response_data = fp.read()
+      else:
+        # Set the context based on cert requirements
+        if CONFIGS.GetBool("VALIDATE_CERTIFICATE"):
+          cert_file = CONFIGS.GetStr("CERTIFICATE_CHAIN_PATH")
+          key_file = CONFIGS.GetStr("CERTIFICATE_KEY_PATH")
+          context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+          context.load_cert_chain(cert_file, keyfile=key_file)
+        else:
+          context = ssl.create_default_context()
+          context.check_hostname = False
+          context.verify_mode = ssl.CERT_NONE
+        with closing(urllib2.urlopen(url, context=context)) as fp:
+          http_status_code = fp.getcode()
+          response_data = fp.read()
+
+    except:
+      GlobeBuilder.StatusWarning("FAILED: Caught exception reading {0}".format(url))
+      raise
+
+    return (response_data, http_status_code)
+
   def AddJsonFile(self, source, is_map, portable_server, json_file):
     """Get JSON from server and add it to the portable globe plugin files.
 
@@ -335,9 +410,10 @@ class GlobeBuilder(object):
     # Get JSON from the server.
     url = "%s/query?request=Json&var=geeServerDefs" % source
     self.Status("Rewrite JSON from: %s to: %s" % (url, json_file))
-    fp = urllib.urlopen(url)
-    json = fp.read()
-    fp.close()
+
+    json, code = self.HttpGet(url)
+    if (code != 200):
+      raise Exception("GET {0} failed with {1}".format(url, code))
 
     # Replace all urls to point at the portable server.
     start = 0
@@ -414,11 +490,12 @@ class GlobeBuilder(object):
       # Get JSON from the server.
       url = "%s/query?request=Icon&icon_path=icons/%s" % (source, icon)
       try:
-        fp = urllib.urlopen(url)
-        fpw = open("%s/%s" % (self.icons_dir, icon), "w")
-        fpw.write(fp.read())
-        fp.close()
-        fpw.close()
+        data, code = self.HttpGet(url)
+        if code == 200:
+          with open("%s/%s" % (self.icons_dir, icon), "w") as fpw:
+            fpw.write(data)
+        else:
+          raise Exception("Cannot fetch {0}".format(url))
       except:
         self.Status("Unable to retrieve icon %s" % icon)
 
@@ -456,8 +533,8 @@ class GlobeBuilder(object):
     if source:
       server, target = common.utils.GetServerAndPathFromUrl(source)
 
-    if not server:
-      server = "http://localhost/"
+    # Replace the server with advanced configuration host
+    server = CONFIGS.GetStr("DATABASE_HOST")
 
     target = common.utils.NormalizeTargetPath(target)
     base_url = "%s/cgi-bin/globe_cutter_app.py" % server
@@ -466,13 +543,11 @@ class GlobeBuilder(object):
     self.Status("Querying search poi ids: target=%s" % target)
     poi_list = None
     try:
-      fp = urllib.urlopen(url)
-      http_status_code = fp.getcode()
+      data, http_status_code = self.HttpGet(url)
       if http_status_code == 200:
-        poi_list = fp.read().strip()
-      fp.close()
+        poi_list = data.strip()
     except Exception as e:
-      raise Exception("Request failed: cannot connect to server")
+      raise Exception("Request failed: cannot connect to server: {0}".format(e))
 
     if poi_list:
       # Quote polygon parameter for URI.
@@ -488,14 +563,13 @@ class GlobeBuilder(object):
         try:
           self.Status("Querying search poi data: poi_id=%s, polygon=%s" %
                       (poi_id, polygon))
-          fp = urllib.urlopen(url)
-          http_status_code = fp.getcode()
+          data, http_status_code = self.HttpGet(url)
           if http_status_code == 200:
             self.Status("Copying search poi data: gepoi_%s to globe" % poi_id)
-            fpw = open(search_file, "w")
-            fpw.write(fp.read().strip())
-            fpw.write("\n")
-            fpw.close()
+
+            with open(search_file, "w") as fpw:
+              fpw.write(data.strip())
+              fpw.write("\n")
           else:
             self.StatusWarning(fp.read())
 
@@ -750,6 +824,7 @@ class GlobeBuilder(object):
         self.search_dir = SEARCH_DIR_TEMPLATE % (value, uid, value)
         self.globe_file = GLOBE_FILE_TEMPLATE % value
         self.map_file = MAP_FILE_TEMPLATE % value
+        self.metadata_file = METADATA_FILE_TEMPLATE % (value, uid, value)
         self.logger = common.utils.Log(LOG_FILE % (value, uid))
 
         form_keys = form_.keys()
@@ -828,20 +903,23 @@ if __name__ == "__main__":
 
     elif cgi_cmd == "REWRITE_DB_ROOT":
       globe_builder.CheckArgs(["globe_name", "source"], FORM)
-      globe_builder.RewriteDbRoot(FORM.getvalue_url("source"))
+      include_historic = FORM.getvalue("include_historical_imagery") is not None
+      globe_builder.RewriteDbRoot(FORM.getvalue_url("source"), include_historic)
 
     elif cgi_cmd == "GRAB_KML":
       globe_builder.CheckArgs(["globe_name", "source"], FORM)
       globe_builder.GrabKml(FORM.getvalue_url("source"))
 
     elif cgi_cmd == "BUILD_GLOBE":
+      ignore_imagery_depth = (FORM.getvalue("ignore_imagery_depth") is not None)
       globe_builder.CheckArgs(["globe_name", "source", "default_level",
                                "max_level"], FORM)
       is_2d = FORM.getvalue("is_2d")
       if is_2d == "t":
         globe_builder.BuildMap(FORM.getvalue_url("source"),
                                int(FORM.getvalue("default_level")),
-                               int(FORM.getvalue("max_level")))
+                               int(FORM.getvalue("max_level")),
+                               ignore_imagery_depth)
       else:
         globe_builder.BuildGlobe(FORM.getvalue_url("source"),
                                  int(FORM.getvalue("default_level")),
@@ -873,7 +951,7 @@ if __name__ == "__main__":
     elif cgi_cmd == "ADD_PLUGIN_FILES":
       is_2d = FORM.getvalue("is_2d")
       globe_builder.CheckArgs(["globe_name", "source"], FORM)
-      globe_builder.AddPluginFiles(FORM.getvalue_url("source"), is_2d)
+      globe_builder.AddPluginFiles(FORM.getvalue_url("source") , is_2d)
 
     elif cgi_cmd == "PACKAGE_GLOBE":
       globe_builder.CheckArgs(["globe_name"], FORM)

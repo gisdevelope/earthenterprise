@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,8 +63,8 @@ void usage(const char *prog, const char *msg = 0, ...) {
 typedef std::set<std::string> SeenSet;
 static
 void DisplayVersionDependencies(const AssetVersion &version,
-                                uint indent,
-                                uint maxdepth,
+                                unsigned int indent,
+                                unsigned int maxdepth,
                                 SeenSet &seen,
                                 const std::string &prefix);
 static
@@ -88,7 +89,7 @@ int main(int argc, char *argv[]) {
     bool showlog      = false;
     bool taillog      = false;
     bool didsomething = false;
-    uint maxdepth     = uint(-1);
+    unsigned int maxdepth     = uint(-1);
     bool showblockers = false;
     bool rasterprojprog = false;
     bool reloadconfig = false;
@@ -131,7 +132,7 @@ int main(int argc, char *argv[]) {
     if (!lrc.empty()) {
       std::vector<std::string> parts;
       split(lrc, ",", back_inserter(parts));
-      uint level, row, col;
+      unsigned int level, row, col;
       if (parts.size() == 3) {
         FromString(parts[0], level);
         FromString(parts[1], row);
@@ -146,7 +147,7 @@ int main(int argc, char *argv[]) {
 
     if (!quadpath.empty()) {
       QuadtreePath qpath(quadpath);
-      uint32 level, row, col;
+      std::uint32_t level, row, col;
       qpath.GetLevelRowCol(&level, &row, &col);
       printf("%s = %u,%u,%u\n", qpath.AsString().c_str(), level, row, col);
       exit(0);
@@ -265,8 +266,8 @@ int main(int argc, char *argv[]) {
 
 static
 void DisplayVersionDependencies(const AssetVersion &version,
-                                uint indent,
-                                uint maxdepth,
+                                unsigned int indent,
+                                unsigned int maxdepth,
                                 SeenSet &seen,
                                 const std::string &prefix) {
   if (indent > maxdepth) return;
@@ -276,30 +277,26 @@ void DisplayVersionDependencies(const AssetVersion &version,
     printf("R  %s%s%s: %s\n",
            std::string((indent-1)*3, ' ').c_str(),
            prefix.c_str(),
-           version->GetRef().c_str(),
+           version->GetRef().toString().c_str(),
            statestr.c_str());
   } else {
     seen.insert(version->GetRef());
     printf("%s%s%s: %s\n",
            std::string(indent*3, ' ').c_str(),
            prefix.c_str(),
-           version->GetRef().c_str(),
+           version->GetRef().toString().c_str(),
            statestr.c_str());
     ++indent;
     if (version->inputs.size()) {
-      for (std::vector<std::string>::const_iterator input =
-             version->inputs.begin();
-           input != version->inputs.end(); ++input) {
-        DisplayVersionDependencies(AssetVersion(*input), indent,
+      for (const auto &input : version->inputs) {
+        DisplayVersionDependencies(AssetVersion(input), indent,
                                    maxdepth,
                                    seen, "< ");
       }
     }
     if (!version->IsLeaf()) {
-      for (std::vector<std::string>::const_iterator child =
-             version->children.begin();
-           child != version->children.end(); ++child) {
-        DisplayVersionDependencies(AssetVersion(*child), indent,
+      for (const auto &child : version->children) {
+        DisplayVersionDependencies(AssetVersion(child), indent,
                                    maxdepth,
                                    seen, "+ ");
       }
@@ -326,7 +323,7 @@ void DisplayBlockerDependencies(const AssetVersion &version,
                           AssetDefs::Failed |
                           AssetDefs::Offline |
                           AssetDefs::Bad)) {
-      printf("%s: %s\n", version->GetRef().c_str(),
+      printf("%s: %s\n", version->GetRef().toString().c_str(),
              version->PrettyState().c_str());
     } else if (version->state == AssetDefs::Blocked) {
       std::string myskipext = skipInputExt;
@@ -348,28 +345,22 @@ void DisplayBlockerDependencies(const AssetVersion &version,
 
       if (version->inputs.size()) {
         if (myskipext.empty()) {
-          for (std::vector<std::string>::const_iterator input =
-                 version->inputs.begin();
-               input != version->inputs.end(); ++input) {
-            DisplayBlockerDependencies(AssetVersion(*input),
+          for (const auto &input : version->inputs) {
+            DisplayBlockerDependencies(AssetVersion(input),
                                        seen, myskipext);
           }
         } else {
-          for (std::vector<std::string>::const_iterator input =
-                 version->inputs.begin();
-               input != version->inputs.end(); ++input) {
-            if (!EndsWith(*input, myskipext)) {
-              DisplayBlockerDependencies(AssetVersion(*input),
+          for (const auto &input : version->inputs) {
+            if (!EndsWith(input, myskipext)) {
+              DisplayBlockerDependencies(AssetVersion(input),
                                          seen, myskipext);
             }
           }
         }
       }
       if (!version->IsLeaf()) {
-        for (std::vector<std::string>::const_iterator child =
-               version->children.begin();
-             child != version->children.end(); ++child) {
-          DisplayBlockerDependencies(AssetVersion(*child),
+        for (const auto &child : version->children) {
+          DisplayBlockerDependencies(AssetVersion(child),
                                      seen, myskipext);
         }
       }
@@ -394,10 +385,8 @@ void DisplayRasterProjectProgress(const AssetVersion &version,
     // be good. (RasterProject has DelayedBuildChildren)
   } else {
     // We don't have children, so all me need to look at is our inputs
-    for (std::vector<std::string>::const_iterator input =
-           version->inputs.begin();
-         input != version->inputs.end(); ++input) {
+    //for (const auto &input : version->inputs) {
       // TODO: implementation.
-    }
+    //}
   }
 }

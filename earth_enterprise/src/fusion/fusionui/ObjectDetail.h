@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +19,10 @@
 #ifndef _ObjectDetail_h_
 #define _ObjectDetail_h_
 
-#include <qlistview.h>
-
+#include <Qt/qobjectdefs.h>
+#include <Qt/qobject.h>
+#include <Qt/q3listview.h>
+using QListViewItem = Q3ListViewItem;
 #include <khGuard.h>
 #include <gstVertex.h>
 #include <gstGeode.h>
@@ -36,7 +39,7 @@ class ObjectDetail : public ObjectDetailBase {
   Q_OBJECT
 
  public:
-  ObjectDetail(QWidget* parent, uint id, gstGeodeHandle g, gstRecordHandle rec);
+  ObjectDetail(QWidget* parent, unsigned int id, gstGeodeHandle g, gstRecordHandle rec);
   ~ObjectDetail();
 
   class VertexItem : public QListViewItem {

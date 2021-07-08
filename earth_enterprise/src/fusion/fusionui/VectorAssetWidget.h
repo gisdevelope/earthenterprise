@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,12 +21,14 @@
 
 #include "fusionui/.ui/vectorassetwidgetbase.h"
 #include "fusion/fusionui/AssetWidgetBase.h"
+#include <Qt/q3filedialog.h>
+#include "common/khTypes.h"
+
 
 namespace qt_fusion {
   class QDateWrapper;
 }
 class AssetBase;
-class QFileDialog;
 class QStringList;
 class VectorProductImportRequest;
 
@@ -55,10 +58,10 @@ class VectorAssetWidget : public VectorAssetWidgetBase,
   void SetDoNotFixInvalidGeometriesCheck(const bool val);
   bool GetDoNotFixInvalidGeometriesCheck() const;
 
-  QFileDialog* FileDialog();
+  Q3FileDialog* FileDialog();
 
-  QFileDialog* file_dialog_;
-  std::vector<uint32> provider_id_list_;
+  Q3FileDialog* file_dialog_;
+  std::vector<std::uint32_t> provider_id_list_;
   int last_conv_index_;
   qt_fusion::QDateWrapper* acquisition_date_wrapper_;
 };

@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -136,13 +137,13 @@ void Cp(const std::string &src, const std::string &dest) {
   if (!khEnsureParentDir(dest)) {
     // more specific message already emitted
     throw khException(kh::tr("Unable to ensure parent dir for %1")
-                      .arg(dest));
+                      .arg(dest.c_str()));
   }
   cmd << "cp" << "-r" << src << dest;
   if (!cmd.System()) {
     // more specific message already emitted
     throw khException(kh::tr("Unable to cp -r %1 %2")
-                      .arg(src).arg(dest));
+                      .arg(src.c_str()).arg(dest.c_str()));
   }
 }
 
@@ -192,7 +193,7 @@ void CopyFilelistNewNames(std::vector<std::string> &filelist,
 void CopyGEDB(geFilePool &file_pool,
               const std::string &outdir, const std::string &newname,
               const std::string &oldpath) {
-  static uint indexcount = 0;
+  static unsigned int indexcount = 0;
   static StringMap iconmap;
   static StringMap packetmap;
   static StringMap poimap;

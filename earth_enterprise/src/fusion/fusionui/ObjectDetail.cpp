@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,24 +15,25 @@
 
 
 #include "fusion/fusionui/ObjectDetail.h"
-
-#include <qlabel.h>
-#include <qtable.h>
-#include <qheader.h>
-
+#include "khException.h"
+#include <Qt/qlabel.h>
+#include <Qt/q3table.h>
+#include <Qt/q3header.h>
+#include <Qt/qlistview.h>
+#include <Qt/q3listview.h>
 #include "fusion/fusionui/Preferences.h"
 
 #include "fusion/fusionui/GfxView.h"
 #include "fusion/gst/gstFeature.h"
 
 #include "fusion/gst/gstTypes.h"
-
+using QListViewItem = Q3ListViewItem;
 namespace {
 
 template<typename ParentView>
 void FillInGeodeData(ParentView *parent_view, const gstGeode *geode) {
   QListViewItem* lastPartItem = 0;
-  for (uint part = 0; part < geode->NumParts(); ++part) {
+  for (unsigned int part = 0; part < geode->NumParts(); ++part) {
     QListViewItem* partItem =
         new QListViewItem(parent_view, lastPartItem,
                           QString("Part %1 (%2)").arg(part).
@@ -39,7 +41,7 @@ void FillInGeodeData(ParentView *parent_view, const gstGeode *geode) {
     lastPartItem = partItem;
 
     ObjectDetail::VertexItem* lastVertItem = 0;
-    for (uint v = 0; v < geode->VertexCount(part); ++v) {
+    for (unsigned int v = 0; v < geode->VertexCount(part); ++v) {
       gstVertex vert = geode->GetVertex(part, v);
       ObjectDetail::VertexItem* vertItem =
           new ObjectDetail::VertexItem(partItem, lastVertItem,
@@ -66,13 +68,13 @@ ObjectDetail::VertexItem::VertexItem(QListViewItem* parent,
 
 // -----------------------------------------------------------------------------
 
-ObjectDetail::ObjectDetail(QWidget* parent, uint id, gstGeodeHandle geode,
+ObjectDetail::ObjectDetail(QWidget* parent, unsigned int id, gstGeodeHandle geode,
                            gstRecordHandle attrib)
-    : ObjectDetailBase(parent , 0, false, WDestructiveClose),
+    : ObjectDetailBase(parent , 0, false, static_cast<Qt::WindowFlags>(Qt::WA_DeleteOnClose)),
       geode_handle_(geode),
       drawVertex(false) {
   setCaption(QString("Feature %1 Detail").arg(id));
-  featureTypeLabel->setText(PrettyPrimType(geode_handle_->PrimType()));
+  featureTypeLabel->setText(PrettyPrimType(geode_handle_->PrimType()).c_str());
   featurePartsLabel->setText(QString::number(geode_handle_->NumParts()));
   featureVertexesLabel->setText(
       QString::number(geode_handle_->TotalVertexCount()));
@@ -83,7 +85,7 @@ ObjectDetail::ObjectDetail(QWidget* parent, uint id, gstGeodeHandle geode,
   attributeTable->setSorting(false);    // disable sorting
   if (attrib && !attrib->IsEmpty()) {
     attributeTable->setNumRows(attrib->NumFields());
-    for (uint row = 0; row < attrib->NumFields(); ++row) {
+    for (unsigned int row = 0; row < attrib->NumFields(); ++row) {
       attributeTable->setText(row, 0, attrib->Header()->Name(row));
       attributeTable->setText(row, 1, attrib->Field(row)->ValueAsUnicode());
       attributeTable->adjustRow(row);
@@ -99,7 +101,7 @@ ObjectDetail::ObjectDetail(QWidget* parent, uint id, gstGeodeHandle geode,
   //
   vertexListView->setSorting(-1);       // disable sorting
   if (Preferences::GlobalEnableAll)
-    vertexListView->header()->setLabel(1, tr("X, Y"));
+    vertexListView->header()->setLabel(1, kh::tr("X, Y"));
 
   if (geode_handle_->PrimType() == gstMultiPolygon ||
       geode_handle_->PrimType() == gstMultiPolygon25D ||
@@ -108,7 +110,7 @@ ObjectDetail::ObjectDetail(QWidget* parent, uint id, gstGeodeHandle geode,
 
     const gstGeodeCollection *multi_geode =
         static_cast<const gstGeodeCollection*>(&(*geode_handle_));
-    for (uint pp = 0; pp < geode_handle_->NumParts(); ++pp) {
+    for (unsigned int pp = 0; pp < geode_handle_->NumParts(); ++pp) {
       const gstGeode *geode =
           static_cast<const gstGeode*>(&(*multi_geode->GetGeode(pp)));
 

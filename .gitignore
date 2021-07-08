@@ -1,5 +1,6 @@
 earth_enterprise/.sconsign.dblite
 earth_enterprise/tutorial/.sconsign.dblite
+earth_enterprise/src/version.txt
 
 # Tutorial files
 earth_enterprise/tutorial/FusionTutorial-Full.tar.gz
@@ -21,3 +22,8 @@ earth_enterprise/tutorial/FusionTutorial/KML
 /*.files
 /*.includes
 
+.vscode/
+
+#sphinx generated files
+docs/geedocs/docsrc/build
+.doctrees

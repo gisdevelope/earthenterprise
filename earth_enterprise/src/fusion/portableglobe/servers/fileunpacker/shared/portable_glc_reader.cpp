@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,25 +24,48 @@
 #include <stdio.h>
 #include <iostream>  // NOLINT(readability/streams)
 #include <string>
-#include "./khTypes.h"
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 /**
  * Constructor.
  */
-PortableGlcReader::PortableGlcReader(const char* path) {
-  glc_file_ = fopen(path, "rb");
-  std::string path_str = path;
-  if (path_str.size() > 3) {
-    suffix_ = path_str.substr(path_str.size() - 3, 3);
+PortableGlcReader::PortableGlcReader(const char* path)
+  : path_(path) {
+  glc_file_ = open(path_.c_str(), O_RDONLY);
+
+  auto last_sep = path_.find_last_of('/');
+  if (last_sep == std::string::npos) {
+    // No forward slash.  Look for backward slash in case we're on Windows.
+    last_sep = path_.find_last_of('\\');
+  }
+
+  std::string full_filename;
+  if (last_sep != std::string::npos) {
+    full_filename = path_.substr(last_sep + 1);
   } else {
-    suffix_ = path_str;
+    full_filename = path_;
+  }
+
+  auto last_dot = full_filename.find_last_of('.');
+  if (last_dot != std::string::npos) {
+    filename_nosuffix_ = full_filename.substr(0, last_dot);
+
+    last_dot++;
+    if (last_dot < full_filename.length()) {
+      suffix_ = full_filename.substr(last_dot);
+    }
+  } else {
+    filename_nosuffix_ = full_filename;
   }
 
   // Set file size (important for negative offsets).
   glc_file_size_ = 0;
   if (glc_file_) {
-    fseek(glc_file_, 0, SEEK_END);
-    glc_file_size_ = ftell(glc_file_);
+    glc_file_size_ = lseek64(glc_file_, 0, SEEK_END);
   } else {
     std::cerr << "GlcReader stream is not open." << std::endl;
   }
@@ -49,7 +73,7 @@ PortableGlcReader::PortableGlcReader(const char* path) {
 
 PortableGlcReader::~PortableGlcReader() {
   if (glc_file_) {
-    fclose(glc_file_);
+    close(glc_file_);
   }
 }
 
@@ -64,7 +88,7 @@ bool PortableGlcReader::IsOpen() const {
  * Reads data into string buffer. Resizes the string first.
  */
 bool PortableGlcReader::Read(
-    std::string* buffer, uint64 offset, uint64 size) const {
+    std::string* buffer, std::uint64_t offset, std::uint64_t size) const {
   buffer->resize(size);
   return ReadData(&(*buffer)[0], offset, size);
 }
@@ -74,14 +98,14 @@ bool PortableGlcReader::Read(
  * Not thread safe.
  */
 bool PortableGlcReader::ReadData(
-    void* buffer, uint64 offset, uint64 size) const {
+    void* buffer, std::uint64_t offset, std::uint64_t size) const {
   if (!glc_file_) {
     return false;
   }
 
   try {
-    fseek(glc_file_, offset, SEEK_SET);
-    fread(reinterpret_cast<char*>(buffer), size, 1, glc_file_);
+    lseek64(glc_file_, offset, SEEK_SET);
+    read(glc_file_, buffer, size);
     return true;
   } catch(...) {
     return false;
@@ -92,7 +116,7 @@ bool PortableGlcReader::ReadData(
  * Returns the size of the file or 0 if there is a problem with
  * the file.
  */
-uint64 PortableGlcReader::Size() const {
+ std::uint64_t PortableGlcReader::Size() const {
   return glc_file_size_;
 }
 

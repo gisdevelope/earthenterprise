@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,8 +78,8 @@ Description: Specialized TCPConnection for communicating via the Fusion
  ***  NoArgRegister()
  ******************************************************************************/
 
+#include <cstdint>
 #include <khnet/TCPInetSocket.h>
-#include <khTypes.h>
 #include <khRefCounter.h>
 #include <notify.h>
 #include <khException.h>
@@ -87,7 +88,7 @@ Description: Specialized TCPConnection for communicating via the Fusion
 class FusionConnection : public TCPConnection
 {
  private:
-  uint32 serial;
+  std::uint32_t serial;
 
 
   // private to force use of handles, use AcceptClient or ConnectTo*
@@ -124,11 +125,11 @@ class FusionConnection : public TCPConnection
 
   class RecvPacket {
    public:
-    uint32  serial;
+    std::uint32_t  serial;
     MsgType msgType;
     char    rawcmdname[32];
-    uint8   reserved1;
-    uint8   reserved2;
+    std::uint8_t   reserved1;
+    std::uint8_t   reserved2;
     std::string payload;
 
     std::string cmdname(void) const {
@@ -142,7 +143,7 @@ class FusionConnection : public TCPConnection
 
     RecvPacket(void) : msgType(InvalidMsg) { }
 
-    RecvPacket(uint32 serial_, MsgType type_,
+    RecvPacket(std::uint32_t serial_, MsgType type_,
                const std::string &cmdname_,
                const std::string &payload_)
         : serial(serial_), msgType(type_),
@@ -205,7 +206,7 @@ class FusionConnection : public TCPConnection
   {
     Send(RecvPacket(serial++, RegisterMsg, cmdname, payload), timeout);
   }
-  uint32 SendRequest(const std::string &cmdname, const std::string &payload,
+  std::uint32_t SendRequest(const std::string &cmdname, const std::string &payload,
                      int timeout = 0)
   {
     Send(RecvPacket(serial++, RequestMsg, cmdname, payload), timeout);
@@ -400,10 +401,10 @@ FusionConnection::TryNotify(const std::string &cmdname, const Arg &arg,
   try {
     Notify(cmdname, arg, timeout);
   } catch (const std::exception &e) {
-    error = QString(cmdname) + ": " + QString::fromUtf8(e.what());
+    error = QString(cmdname.c_str()) + ": " + QString::fromUtf8(e.what());
     return false;
   } catch (...) {
-    error = QString(cmdname) + ": " + kh::tr("Unknown error");
+    error = QString(cmdname.c_str()) + ": " + kh::tr("Unknown error");
     return false;
   }
   return true;
@@ -437,10 +438,10 @@ FusionConnection::TryRequest(const std::string &cmdname, const Arg &arg,
   try {
     Request(cmdname, arg, ret, timeout);
   } catch (const std::exception &e) {
-    error = QString(cmdname) + ": " + QString::fromUtf8(e.what());
+    error = QString(cmdname.c_str()) + ": " + QString::fromUtf8(e.what());
     return false;
   } catch (...) {
-    error = QString(cmdname) + ": " + kh::tr("Unknown error");
+    error = QString(cmdname.c_str()) + ": " + kh::tr("Unknown error");
     return false;
   }
   return true;
@@ -455,10 +456,10 @@ FusionConnection::TryNoRetRequest(const std::string &cmdname, const Arg &arg,
   try {
     NoRetRequest(cmdname, arg, timeout);
   } catch (const std::exception &e) {
-    error = QString(cmdname) + ": " + QString::fromUtf8(e.what());
+    error = QString(cmdname.c_str()) + ": " + QString::fromUtf8(e.what());
     return false;
   } catch (...) {
-    error = QString(cmdname) + ": " + kh::tr("Unknown error");
+    error = QString(cmdname.c_str()) + ": " + kh::tr("Unknown error");
     return false;
   }
   return true;
@@ -472,10 +473,10 @@ FusionConnection::TryRegister(const std::string &cmdname, const Arg &arg,
   try {
     Register(cmdname, arg, timeout);
   } catch (const std::exception &e) {
-    error = QString(cmdname) + ": " + QString::fromUtf8(e.what());
+    error = QString(cmdname.c_str()) + ": " + QString::fromUtf8(e.what());
     return false;
   } catch (...) {
-    error = QString(cmdname) + ": " + kh::tr("Unknown error");
+    error = QString(cmdname.c_str()) + ": " + kh::tr("Unknown error");
     return false;
   }
   return true;

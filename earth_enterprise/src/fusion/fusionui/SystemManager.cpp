@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,18 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-
 #include "SystemManager.h"
 #include "SystemListener.h"
 #include <autoingest/khAssetManagerProxy.h>
 #include <notify.h>
-#include <qapplication.h>
-#include <qlistbox.h>
-#include <qtooltip.h>
-#include <qpainter.h>
-#include <qpen.h>
-
+#include <Qt/qapplication.h>
+#include <Qt/q3listbox.h>
+#include <Qt/qtooltip.h>
+#include <Qt/qpainter.h>
+#include <Qt/qpen.h>
+using QListBoxText = Q3ListBoxText;
+using QListBoxItem = Q3ListBoxItem;
+using QListBox = Q3ListBox;
 
 class WaitingItem : public QListBoxText
 {
@@ -31,7 +32,7 @@ class WaitingItem : public QListBoxText
   virtual void paint(QPainter *painter) {
     if (!error.isEmpty()) {
       QPen oldpen = painter->pen();
-      painter->setPen(QObject::red);
+      painter->setPen(Qt::red);
       QListBoxText::paint(painter);
       painter->setPen(oldpen);
     } else {
@@ -46,10 +47,16 @@ class WaitingItem : public QListBoxText
   }
 };
 
-class WaitingErrorTip : public QToolTip
+/* TODO: Momentarily disabled
+
+class WaitingErrorTip // : public QToolTip
 {
+
  public:
-  WaitingErrorTip(QListBox *listbox) : QToolTip(listbox) { }
+  WaitingErrorTip(QListBox *listbox) // : QToolTip(listbox) { }
+  {
+      QToolTip::add(listbox, QString());
+  }
   virtual ~WaitingErrorTip(void) { }
  protected:
   virtual void maybeTip(const QPoint &p) {
@@ -59,15 +66,17 @@ class WaitingErrorTip : public QToolTip
       if (item) {
         WaitingItem *witem = dynamic_cast<WaitingItem*>(item);
         if (witem && !witem->error.isEmpty()) {
-          tip(listbox->itemRect(item), witem->error);
+          // the original QT3 call to display a tooltop popup was to:
+          //    tip(listbox->itemRect(item), witem->error);
+          QToolTip::showText(listbox->itemRect(item).topLeft(),witem->error);
         }
       }
-            
+
     }
   }
-};
+};*/
 
-SystemManager::SystemManager( QWidget* parent, const char* name, bool modal, WFlags fl )
+SystemManager::SystemManager( QWidget* parent, const char* name, bool modal, Qt::WFlags fl )
     : SystemManagerBase( parent, name, modal, fl ), taskTimer(this)
 {
   connect(&taskTimer, SIGNAL(timeout()), this, SLOT(updateTasks()));
@@ -75,7 +84,7 @@ SystemManager::SystemManager( QWidget* parent, const char* name, bool modal, WFl
   waitingList->setSelectionMode(QListBox::NoSelection);
   activeList->setSelectionMode(QListBox::NoSelection);
 
-  (void) new WaitingErrorTip(waitingList);
+  //(void) new WaitingErrorTip(waitingList);
 }
 
 
@@ -111,8 +120,8 @@ SystemManager::hide()
 void
 SystemManager::assetsChanged(const AssetChanges &changes)
 {
-  static const uint maxitems = 1000;
-  uint count = activityList->count() + changes.items.size();
+  static const unsigned int maxitems = 1000;
+  unsigned int count = activityList->count() + changes.items.size();
 
   activityList->setUpdatesEnabled(false);
 
@@ -125,7 +134,9 @@ SystemManager::assetsChanged(const AssetChanges &changes)
   // add new log entries
   for (AssetChanges::CIterator i = changes.items.begin();
        i != changes.items.end(); ++i) {
-    activityList->insertItem( i->ref + ": " + i->desc );
+    std::string itemname { i->ref.toString() };
+    itemname += ": " + i->desc;
+    activityList->insertItem(QString(itemname.c_str()));
   }
 
 
@@ -147,14 +158,22 @@ SystemManager::updateTasks(void)
   QString error;
   TaskLists taskLists;
   if (!khAssetManagerProxy::GetCurrTasks("dummy", taskLists, error)) {
+    QString errorMsg;
+    std::string temp_msg { "GetCurrTasks: "};
+    temp_msg += sysManBusyMsg;
+    static const QString BUSY_MSG = temp_msg.c_str();
+    if (error.compare(BUSY_MSG) == 0)
+      errorMsg = kh::tr("--- System Manager is busy ---");
+    else
+      errorMsg = kh::tr("--- Unable to contact System Manager ---");
+
     // Can't get TaskList...
     // clean top panes and display message about
     // being unable to connect to asset manager
     waitingList->clear();
     activeList->clear();
-    (void) new WaitingItem(waitingList,
-                           tr("--- Unable to contact System Manager ---"));
-    activeList->insertItem(tr("--- Unable to contact System Manager ---"));
+    (void) new WaitingItem(waitingList, errorMsg);
+    activeList->insertItem(errorMsg);
 
   } else {
     // Waiting list
@@ -162,7 +181,7 @@ SystemManager::updateTasks(void)
     for (std::vector<TaskLists::WaitingTask>::const_iterator w =
            taskLists.waitingTasks.begin();
          w != taskLists.waitingTasks.end(); ++w) {
-      (void) new WaitingItem(waitingList, w->verref,
+      (void) new WaitingItem(waitingList, w->verref.c_str(),
                              w->activationError);
     }
 
@@ -174,7 +193,10 @@ SystemManager::updateTasks(void)
       for (std::vector<TaskLists::ActiveTask>::const_iterator a =
              p->activeTasks.begin();
            a != p->activeTasks.end(); ++a) {
-        activeList->insertItem(p->hostname + ": " + a->verref);
+        QString itemname = p->hostname.c_str();
+        itemname += "; ";
+        itemname += a->verref.c_str();
+        activeList->insertItem(itemname);
       }
     }
   }

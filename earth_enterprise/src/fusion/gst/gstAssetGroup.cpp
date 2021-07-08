@@ -15,29 +15,55 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <qregexp.h>
+#include <Qt/qregexp.h>
 #include <gstAssetManager.h>
 #include <khConstants.h>
-
 #include "gstAssetGroup.h"
 
-QString shortAssetName(const QString& n) {
-  QString sname = n;
-  QStringList suffix;
-  suffix << kVectorAssetSuffix << kImageryAssetSuffix
-         << kMercatorImageryAssetSuffix << kTerrainAssetSuffix
-         << kVectorProjectSuffix << kImageryProjectSuffix
-         << kMercatorImageryProjectSuffix << kTerrainProjectSuffix
-         << kDatabaseSuffix << kMapLayerSuffix << kMapProjectSuffix
-         << kMapDatabaseSuffix << kMercatorMapDatabaseSuffix
-         << kVectorLayerSuffix;
-  for (QStringList::Iterator it = suffix.begin(); it != suffix.end(); ++it) {
-    if (sname.endsWith(*it)) {
-      sname.truncate(sname.length() - (*it).length());
-      break;
-    }
+
+std::string shortAssetName(const char* n) {
+
+  static const std::vector<std::string> suffixes =
+  {
+      kVectorAssetSuffix, kImageryAssetSuffix, kMercatorImageryAssetSuffix,
+      kTerrainAssetSuffix, kVectorProjectSuffix, kImageryProjectSuffix,
+      kMercatorImageryProjectSuffix, kTerrainProjectSuffix,
+      kDatabaseSuffix, kMapLayerSuffix, kMapProjectSuffix,
+      kMapDatabaseSuffix, kMercatorMapDatabaseSuffix, kVectorLayerSuffix
+  };
+
+  std::string saname { n };
+
+ /*
+	code takes in a long asset name, checks to see if it has one
+	of the appropriate suffixes (e.g. .kiasset, kmmdatabase, .kmlayer, etc)
+	if it is found, it strils off the suffix and returns the short name,
+	if a known suffix is not found, the long asset name will be returned
+
+	i.e. shortAssetName("AnAssetName.kiasset") will return "AnAssetName",
+	     shortAssetName("AnAssetName.notvalid") will return "AnAssetName.notvalid"
+ */
+  for (const auto& elem : suffixes)
+  {
+      auto pos = saname.rfind(elem);
+      if (pos != std::string::npos)
+      {
+          saname = saname.substr(0,pos);
+          break;
+      }
   }
-  return sname;
+
+  return saname;
+}
+
+std::string shortAssetName(const std::string& str)
+{
+    return shortAssetName(str.c_str());
+}
+
+std::string shortAssetName(const QString& str)
+{
+    return shortAssetName(str.toStdString().c_str());
 }
 
 bool isAssetPath(const QString& str) {
@@ -70,7 +96,8 @@ bool gstAssetHandleImpl::isValid() const {
 }
 
 Asset gstAssetHandleImpl::getAsset() const {
-  return Asset(relativePath().latin1());
+  std::string rpath { relativePath().toStdString() };
+  return Asset(rpath);
 }
 
 QString gstAssetHandleImpl::getName() const {
@@ -141,7 +168,7 @@ std::vector<gstAssetHandle> gstAssetFolder::getAssetHandles() const {
       list.push_back(handle);
     } else {
       notify(NFY_DEBUG, "Invalid asset found! dirname=%s file=%s",
-             dir_name_.latin1(), (*it).latin1());
+             dir_name_.latin1(), it->latin1());
     }
   }
 
@@ -155,7 +182,7 @@ std::vector<gstAssetFolder> gstAssetFolder::getAssetFolders() const {
   QStringList files = dir.entryList(QDir::Dirs, QDir::Name | QDir::IgnoreCase);
   for (QStringList::Iterator it = files.begin(); it != files.end(); ++it) {
     // do not add if this is an asset, or if it starts with a dot ('.')
-    if (!isAssetPath(*it) && !(*it).startsWith("."))
+    if (!isAssetPath(*it) && !it->startsWith("."))
       list.push_back(gstAssetFolder(dir.filePath(*it)));
   }
 

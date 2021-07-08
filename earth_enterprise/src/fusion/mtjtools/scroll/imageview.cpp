@@ -21,7 +21,7 @@
 #include <qpainter.h>
 #include <qstatusbar.h>
 #include <qcursor.h>
-
+#include <QtGui/QKeyEvent>
 #include "imageview.h"
 #include "khistogram.h"
 #include "zoom.h"
@@ -338,6 +338,8 @@ static const char *box7[] = {
   "................................",
   "................................",
 };
+  
+static const size_t maxbuflen  = 512;
 
 ImageView::ImageView(QWidget *parent, const char *name, WFlags f)
     :QScrollView (parent, name, f
@@ -441,7 +443,7 @@ ImageView::ImageView(QWidget *parent, const char *name, WFlags f)
   setVScrollBarMode(QScrollView::AlwaysOn);
 
   viewport()->setMouseTracking(true);
-  viewport()->setFocusPolicy(QWidget::StrongFocus);
+  viewport()->setFocusPolicy(Qt::StrongFocus);
 
   setRadius(0);
 }
@@ -466,8 +468,9 @@ void ImageView::setGlobalLutOut(const std::string &out) {
 
 void ImageView::loadInitImage(const std::string &image_file_path) {
   char *temp_path;
-  temp_path = new char[image_file_path.length() + 1];
-  strcpy(temp_path, image_file_path.c_str());
+  int pathlen = image_file_path.length();
+  temp_path = new char[pathlen + 1];
+  strncpy(temp_path, image_file_path.c_str(), pathlen + 1);
   this->setFilename(temp_path);
   delete [] temp_path;
 }
@@ -483,8 +486,9 @@ void ImageView::setLutWork(const std::string &lutwork_file) {
     if (_sample == NULL) {
       _sample = (RGBSample *)calloc(sizeof(RGBSample), _sampleMax);
     }
-    char *ascii_lutwork = new char[lutwork_file.length() + 1];
-    strcpy(ascii_lutwork, lutwork_file.c_str());
+    int filelength = lutwork_file.length();
+    char *ascii_lutwork = new char[filelength + 1];
+    strncpy(ascii_lutwork, lutwork_file.c_str(), filelength + 1);
     fh = fopen(ascii_lutwork, "r");
     delete [] ascii_lutwork;
     fscanf(fh,
@@ -569,7 +573,7 @@ ImageView::~ImageView() {
 
 void ImageView::setFilename(char *name) {
   // Display specified image file
-  char text[512];
+  char text[maxbuflen];
 
   // close old file
   if (_dataset != NULL) {
@@ -584,12 +588,12 @@ void ImageView::setFilename(char *name) {
   }
 
   // remember new file name
-  strcpy(_filename, name);
+  strncpy(_filename, name, maxbuflen);
 
   // open file using GDAL
   _dataset = (GDALDataset *)GDALOpen(_filename, GA_ReadOnly);
   if (_dataset == NULL) {
-    sprintf(text, "GDAL error opening image '%s'", _filename);
+    snprintf(text, maxbuflen, "GDAL error opening image '%s'", _filename);
     _statusBar->message(text, 0);
     _filename[0] = '\0';
     return;
@@ -639,8 +643,8 @@ void ImageView::setFilename(char *name) {
     }
 
     // has a histogram for this image already been computed?
-    char hname[512];
-    sprintf(hname, "%s.his", _filename);
+    char hname[maxbuflen];
+    snprintf(hname, maxbuflen, "%s.his", _filename);
     KHistogram kh;
     if (kh.read(hname) == 0) {
       // && kh.size() == _hr.size()) //KH is not auto-sizing
@@ -679,18 +683,20 @@ void ImageView::setFilename(char *name) {
 
   repaintContents();
 
-  sprintf(text, "Loaded '%s' (%dx%d, %d bits per R/G/B)", _filename, width(), height(), 8*bytes());
+  snprintf(text, maxbuflen, "Loaded '%s' (%dx%d, %d bits per R/G/B)", _filename, width(), height(), 8*bytes());
   _statusBar->message(text, 0);
 }
 
 void ImageView::keyPressEvent(QKeyEvent *e) {
-  if (e->ascii() >= '0' && e->ascii() <= '7') {
-    setRadius(e->ascii() - '0');
+  if (e->text().toAscii() >= QChar('0') &&
+      e->text().toAscii() <= QChar('7')) {
+    // only looking at a single character
+    setRadius(e->text().toAscii().at(0) - '0');
   } else if (e->key() == Qt::Key_Up && e->state() == 0) {
     QPoint where = QCursor::pos();
     where.setY(where.y() - 1);
     QCursor::setPos(where);
-  } else if (e->key() == Qt::Key_Down && e->state() == 0) {
+  } else if (e->key()== Qt::Key_Down && e->state() == 0) {
     QPoint where = QCursor::pos();
     where.setY(where.y() + 1);
     QCursor::setPos(where);
@@ -724,22 +730,22 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     resizeContents(int(width()*_scale), int(height()*_scale));
     center(int(width()*_scale*prevX), int(height()*_scale*prevY));
     updateContents();
-  } else if (e->ascii() == '=') {
+  } else if (e->text().toAscii() == QChar('=')) {
     _resetOnFileOpen = (_resetOnFileOpen ? 0 : 1);
-  } else if (e->ascii() == '-') {
+  } else if (e->text().toAscii() == QChar('-')) {
     _swapRedAndBlue = !_swapRedAndBlue;
     updateContents();
-  } else if (e->ascii() == 'u') {
+  } else if (e->text().toAscii() == QChar('u')) {
     int limit = rowLimit()/2;
     if (limit < 1)
       limit = 1;
     setRowLimit(limit);
-  } else if (e->ascii() == 'U') {
+  } else if (e->text().toAscii() == QChar('U')) {
     int limit = rowLimit();
     if (limit < 1)
       limit = 1;
     setRowLimit(2*limit);
-  } else if (e->ascii() == 'l') {
+  } else if (e->text().toAscii() == QChar('l')) {
     // left tail-clip less during histogram processing
     _leftN -= (e->state() & Qt::ControlButton) ? 10 : 1;
     if (_leftN < 0)
@@ -758,7 +764,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     updateLUTs();
     updateContents();
 #endif
-  } else if (e->ascii() == 'L') {
+  } else if (e->text().toAscii() == QChar('L')) {
     // left tail-clip more during histogram processing
     _leftN += (e->state() & Qt::ControlButton) ? 10 : 1;
     _left = double(_leftN)/double(_leftD);
@@ -775,7 +781,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     updateLUTs();
     updateContents();
 #endif
-  } else if (e->ascii() == 'r') {
+  } else if (e->text().toAscii() == QChar('r')) {
     // right tail-clip less during histogram processing
     _rightN -= (e->state() & Qt::ControlButton) ? 10 : 1;
     if (_rightN < 0)
@@ -794,7 +800,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     updateLUTs();
     updateContents();
 #endif
-  } else if (e->ascii() == 'R') {
+  } else if (e->text().toAscii() == QChar('R')) {
     // right tail-clip more during histogram processing
     _rightN += (e->state() & Qt::ControlButton) ? 10 : 1;
     _right = double(_rightN)/double(_rightD);
@@ -811,7 +817,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     updateLUTs();
     updateContents();
 #endif
-  } else if (e->ascii() == 'p') {
+  } else if (e->text().toAscii() == QChar('p')) {
     // less pre-gamma
     --_preGammaN;
     if (_preGammaN < 0)
@@ -827,7 +833,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     } else {
       update(); // just the frame
     }
-  } else if (e->ascii() == 'P') {
+  } else if (e->text().toAscii() == QChar('P')) {
     // more pre-gamma
     ++_preGammaN;
     _preGamma = double(_preGammaN)/double(_preGammaD);
@@ -841,7 +847,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     } else {
       update(); // just the frame
     }
-  } else if (e->ascii() == 'g') {
+  } else if (e->text().toAscii() == QChar('g')) {
     // less post-gamma
     --_postGammaN;
     if (_postGammaN < 0)
@@ -854,7 +860,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     } else {
       update(); // just the frame
     }
-  } else if (e->ascii() == 'G') {
+  } else if (e->text().toAscii() == QChar('G')) {
     // more post-gamma
     ++_postGammaN;
     _postGamma = double(_postGammaN)/double(_postGammaD);
@@ -865,7 +871,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     } else {
       update(); // just the frame
     }
-  } else if (e->ascii() == 'z') {
+  } else if (e->text().toAscii() == QChar('z')) {
     // less zoom
     if (e->state() & Qt::AltButton) {
       _zoom -= 4;
@@ -881,7 +887,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     center(int(width()*_scale*xCenter), int(height()*_scale*yCenter));
 
     updateContents();
-  } else if (e->ascii() == 'Z') {
+  } else if (e->text().toAscii() == QChar('Z')) {
     // more zoom
     if (e->state() & Qt::AltButton) {
       _zoom += 4;
@@ -897,7 +903,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     center(int(xCenter*width()*_scale), int(yCenter*height()*_scale));
 
     updateContents();
-  } else if (e->ascii() == 'h') {
+  } else if (e->text().toAscii() == QChar('h')) {
     if (_accumulate) {
       // compute whole-image histogram (slow for huge files)
       _statusBar->message("Computing red histogram", 0);
@@ -917,8 +923,8 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
       kh.band(2).load(_hb.getBinPointer(), size);
 
       // write histogram to file
-      char hname[512];
-      sprintf(hname, "%s.his", _filename);
+      char hname[maxbuflen];
+      snprintf(hname, maxbuflen, "%s.his", _filename);
       /*int hstatus = */ kh.write(hname);
 
       // update clip values
@@ -930,7 +936,7 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
       updateLUTs();
       updateContents();
     }
-  } else if (e->ascii() == 'c') {
+  } else if (e->text().toAscii() == QChar('c')) {
     _correct = !_correct;
 
 #ifdef really_raw
@@ -951,13 +957,13 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     } else {
       update(); // just update GUI elements
     }
-  } else if (e->ascii() == 'w' || e->ascii() == 'W') {
+  } else if (e->text().toAscii() == QChar('w') || e->text().toAscii() == QChar('W')) {
     SaveLutWork();
   }
-  else if (e->ascii() == 'A') {
+  else if (e->text().toAscii() == QChar('A')) {
     // apply the LUT and make a new image!
-    char nname[512];
-    strcpy(nname, _filename);
+    char nname[maxbuflen];
+    strncpy(nname, _filename, maxbuflen);
 
     char *slash = nname + strlen(nname) - 1; // last character
     while (slash != nname && *slash != '\\' && *slash != '/')
@@ -965,13 +971,14 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
     if (*slash == '\\' || *slash == '/')
       slash++;
 
-    char rest[512];
-    strcpy(rest, slash);
+    char rest[maxbuflen];
+    strncpy(rest, slash, maxbuflen);
 
-    sprintf(slash, "new-%s", rest);
+    int slashlen = (strlen(nname) * 2) - 1;
+    snprintf(slash, slashlen, "new-%s", rest);
 
-    char text[512];
-    sprintf(text, "Applying correction to create new image '%s'", nname);
+    char text[maxbuflen];
+    snprintf(text, maxbuflen, "Applying correction to create new image '%s'", nname);
     _statusBar->message(text, 0);
 
     // construct and fill KHistogram with LUT data
@@ -983,11 +990,11 @@ void ImageView::keyPressEvent(QKeyEvent *e) {
 
     // use LUT to create new, transformed image
     kh.transform(_dataset, nname);
-  } else if (e->ascii() == 's') {
+  } else if (e->text().toAscii() == QChar('s')) {
     _contrast--;
     updateLUTs();
     updateContents();
-  } else if (e->ascii() == 'S') {
+  } else if (e->text().toAscii() == QChar('S')) {
     _contrast++;
     updateLUTs();
     updateContents();
@@ -1007,7 +1014,7 @@ void ImageView::contentsMouseMoveEvent(QMouseEvent *e) {
 }
 
 void ImageView::contentsMousePressEvent(QMouseEvent *e) {
-  if (e->button() == QMouseEvent::LeftButton) {
+  if (e->button() == Qt::LeftButton) {
     // sample the image
     int r, g, b;
     sampleImage(e->x(), e->y(), r, g, b);   // get RGB
@@ -1020,7 +1027,7 @@ void ImageView::contentsMousePressEvent(QMouseEvent *e) {
       updateContents(); // redraw contents to show effect of updated color correction
     else
       update(); // just update GUI elements
-  } else if (e->button() == QMouseEvent::RightButton) {
+  } else if (e->button() == Qt::RightButton) {
     // recenter and zoom
     double xCenter = e->x() / double(width())  / _scale;
     double yCenter = e->y() / double(height()) /_scale;
@@ -1050,8 +1057,8 @@ void ImageView::sampleImage(int x, int y, int& rValue, int& gValue, int& bValue)
   pixel(x, y, rValue, gValue, bValue);
 
   if (_statusBar != NULL) {
-    char text[512];
-    sprintf(text, "%s%s(%d,%d) r=%d, g=%d, b=%d (%dx%d) [rows=%d][%.2f%%/%.2f%%: %d/%d %d/%d %d/%d][%d%s](%6.3f+%6.3f*r, %2.0f%%)(%7.4f+%7.4f*b, %2.0f%%)[%d][%.3f/%.3f][%d]%.2f",
+    char text[maxbuflen];
+    snprintf(text, maxbuflen, "%s%s(%d,%d) r=%d, g=%d, b=%d (%dx%d) [rows=%d][%.2f%%/%.2f%%: %u/%u %u/%u %u/%u][%d%s](%6.3f+%6.3f*r, %2.0f%%)(%7.4f+%7.4f*b, %2.0f%%)[%d][%.3f/%.3f][%d]%.2f",
             _resetOnFileOpen ? "1" : "n",
             _correct ? "C" : "R",
             x, y,
@@ -1123,13 +1130,6 @@ void ImageView::pixel(int x, int y, int& rValue, int& gValue, int& bValue, int w
     unsigned char *g = (unsigned char *)_ga; //calloc(1*w*h*1, 1);
     unsigned char *b = (unsigned char *)_ba; //calloc(1*w*h*1, 1);
 
-    // read 8-bit image data into separate bands using GDAL
-    int bi[] = {1,2,3}; // GDAL band index: 1=red, 2=green, 3=blue
-    int cplerr = _dataset->RasterIO(GF_Read, x, y, w, h, r, w, h, GDT_Byte, 1, &bi[0], 1, 1*w, 0);
-    cplerr = _dataset->RasterIO(GF_Read, x, y, w, h, g, w, h, GDT_Byte, 1, &bi[1], 1, 1*w, 0);
-    cplerr = _dataset->RasterIO(GF_Read, x, y, w, h, b, w, h, GDT_Byte, 1, &bi[2], 1, 1*w, 0);
-    (void) cplerr;
-
     // compute mean values in each band
     rValue = 0;
     gValue = 0;
@@ -1160,12 +1160,6 @@ void ImageView::pixel(int x, int y, int& rValue, int& gValue, int& bValue, int w
     unsigned short *g = (unsigned short *)_ga;
     unsigned short *b = (unsigned short *)_ba;
 
-    // read 8-bit image data into separate bands using GDAL
-    int bi[] = {1,2,3}; // GDAL band index: 1=red, 2=green, 3=blue
-    int cplerr = _dataset->RasterIO(GF_Read, x, y, w, h, r, w, h, GDT_UInt16, 1, &bi[0], 2, 2*w, 0);
-    cplerr = _dataset->RasterIO(GF_Read, x, y, w, h, g, w, h, GDT_UInt16, 1, &bi[1], 2, 2*w, 0);
-    cplerr = _dataset->RasterIO(GF_Read, x, y, w, h, b, w, h, GDT_UInt16, 1, &bi[2], 2, 2*w, 0);
-
     // compute mean values in each band
     rValue = 0;
     gValue = 0;
@@ -1182,7 +1176,7 @@ void ImageView::pixel(int x, int y, int& rValue, int& gValue, int& bValue, int w
     bValue /= pixels;
   }
 
-  //char text[512];
+  //char text[maxbuflen];
   //sprintf(text, "[(%d,%d) (%dx%d) r=%d]", x, y, w, h, radius());
   //_statusBar->message(text, 0);
 }
@@ -1190,7 +1184,7 @@ void ImageView::pixel(int x, int y, int& rValue, int& gValue, int& bValue, int w
 void ImageView::resizeEvent (QResizeEvent *e) {
   QScrollView::resizeEvent(e);
 
-  //char text[512];
+  //char text[maxbuflen];
   //sprintf(text, "resize w=%d, h=%d", visibleWidth(), visibleHeight());
   //_statusBar->message(text, 0);
 }
@@ -1321,7 +1315,7 @@ void ImageView::drawScaledContents(QPainter *p, int cx, int cy, int cw, int ch) 
   //QImage si = qi.smoothScale (cw/2, ch/2);
   p->drawImage(cx, cy, qi);
 
-  //char text[512];
+  //char text[maxbuflen];
   //sprintf(text, "draw x=%d, y=%d, w=%d, h=%d", cx, cy, cw, ch);
   //_statusBar->message(text, 0);
 }
@@ -1346,22 +1340,6 @@ int ImageView::readScaledTile (int cx, int cy, int cw, int ch) {
       filter  = Filter::MitchellFilter;
       support = Filter::MitchellSupport;
     }
-
-#if     0
-    // force filter type for testing
-
-    //filter  = Filter::impulseFilter;
-    //support = Filter::impulseSupport;
-
-    //filter  = Filter::boxFilter;
-    //support = Filter::boxSupport;
-
-    //filter  = Filter::triangleFilter;
-    //support = Filter::triangleSupport;
-
-    filter  = Filter::MitchellFilter;
-    support = Filter::MitchellSupport;
-#endif
 
     // transform source coordinates to destination coordinates
 
@@ -1440,7 +1418,7 @@ int ImageView::readScaledTile (int cx, int cy, int cw, int ch) {
     memcpy(_g8, gNew.data, pixels*sizeof(unsigned char));
     memcpy(_b8, bNew.data, pixels*sizeof(unsigned char));
 
-    //char text[512];
+    //char text[maxbuflen];
     //sprintf(text, "ReadScaledTile [x=%d, y=%d, w=%d, h=%d]%f[%d, %d, %f, %f]", cx, cy, cw, ch, _scale, wRaw, hRaw, xOffset, yOffset);
     //_statusBar->message(text, 0);
   }
@@ -1533,12 +1511,6 @@ int ImageView::readTile (int cx, int cy, int cw, int ch) {
 #else
   // get data from GDAL
   if (bytes() == 1) {
-    // 1: read 8-bit image data using GDAL (NOTE: 8-bit data stored in "16-bit buffer" area)
-    int bi[] = {1,2,3}; // GDAL band index: 1=red, 2=green, 3=blue
-    int cplerr = _dataset->RasterIO(GF_Read, cx, cy, cw, ch, _r16, cw, ch, GDT_Byte, 1, &bi[0], 1, 1*cw, 0);
-    cplerr = _dataset->RasterIO(GF_Read, cx, cy, cw, ch, _g16, cw, ch, GDT_Byte, 1, &bi[1], 1, 1*cw, 0);
-    cplerr = _dataset->RasterIO(GF_Read, cx, cy, cw, ch, _b16, cw, ch, GDT_Byte, 1, &bi[2], 1, 1*cw, 0);
-
     // 2: update histogram
     if (_accumulate) {
       // incrementally accumulate approximate whole-image histogram
@@ -1559,10 +1531,6 @@ int ImageView::readTile (int cx, int cy, int cw, int ch) {
     transform((unsigned char *)_b16, _b8, pixels, _bLut);
   } else {
     // 1: read 16-bit image data using GDAL
-    int bi[] = {1,2,3}; // GDAL band index: 1=red, 2=green, 3=blue
-    int cplerr = _dataset->RasterIO(GF_Read, cx, cy, cw, ch, _r16, cw, ch, GDT_UInt16, 1, &bi[0], 2, 2*cw, 0);
-    cplerr = _dataset->RasterIO(GF_Read, cx, cy, cw, ch, _g16, cw, ch, GDT_UInt16, 1, &bi[1], 2, 2*cw, 0);
-    cplerr = _dataset->RasterIO(GF_Read, cx, cy, cw, ch, _b16, cw, ch, GDT_UInt16, 1, &bi[2], 2, 2*cw, 0);
 
 #if 0
     if (1) // if (_ApplyQuickbirdAntiBlue) {
@@ -1917,8 +1885,9 @@ void ImageView::writeSamples(char *filename) {
 
 void ImageView::SaveLutWork(void) {
   // save settings to lutwork file
-  char *ascii_lutwork = new char[gLutWorkOut.length() + 1];
-  strcpy(ascii_lutwork, gLutWorkOut.c_str());
+  size_t glutworklen = gLutWorkOut.length();
+  char *ascii_lutwork = new char[glutworklen + 1];
+  strncpy(ascii_lutwork, gLutWorkOut.c_str(), glutworklen + 1);
   FILE* fh = fopen(ascii_lutwork, "w");
   delete [] ascii_lutwork;
   if (fh != NULL) {

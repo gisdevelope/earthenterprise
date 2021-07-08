@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +17,8 @@
 
 #ifndef __Defaultable_h
 #define __Defaultable_h
+
+#include "CacheSizeCalculations.h"
 
 template <class T>
 class Defaultable {
@@ -62,7 +65,15 @@ class Defaultable {
     return ((useDefault == other.useDefault) &&
             (useDefault || (val == other.val)));
   }
+  std::uint64_t GetHeapUsage() const {
+    return ::GetHeapUsage(val);
+  }
 };
+
+template <class T>
+inline std::uint64_t GetHeapUsage(const Defaultable<T> &obj) {
+  return obj.GetHeapUsage();
+}
 
 
 #endif /* __Defaultable_h */

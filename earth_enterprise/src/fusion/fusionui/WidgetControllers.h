@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +20,12 @@
 #ifndef FUSION_FUSIONUI_WIDGETCONTROLLERS_H__
 #define FUSION_FUSIONUI_WIDGETCONTROLLERS_H__
 
-#include <qobject.h>
+#include <Qt/qobjectdefs.h>
+#include <Qt/qobject.h>
 #include <khGuard.h>
 #include <geRange.h>
-#include <qcombobox.h>
-#include <qwidgetstack.h>
+#include <Qt/qcombobox.h>
+#include <Qt/q3widgetstack.h>
 #include <khMetaData.h>
 #include <gstSite.h>
 
@@ -35,6 +37,7 @@ class QGroupBox;
 class MapShieldConfig;
 
 class WidgetControllerManager;
+using QWidgetStack = Q3WidgetStack;
 
 // ****************************************************************************
 // ***  WidgetController
@@ -92,12 +95,12 @@ class WidgetControllerManager : public QObject {
   { }
 
   void SyncToConfig(void) {
-    for (uint i = 0; i < controllers.size(); ++i) {
+    for (unsigned int i = 0; i < controllers.size(); ++i) {
       controllers[i]->SyncToConfig();
     }
   }
   void SyncToWidgets(void) {
-    for (uint i = 0; i < controllers.size(); ++i) {
+    for (unsigned int i = 0; i < controllers.size(); ++i) {
       controllers[i]->DoSyncToWidgets();
     }
   }
@@ -335,7 +338,7 @@ class RangeSpinControllerBase : public WidgetController {
  protected slots:
   void MinChanged(int);
   void MaxChanged(int);
-  
+
  protected:
   virtual void SyncToWidgetsImpl(void) = 0;
   RangeSpinControllerBase(WidgetControllerManager &manager,
@@ -514,7 +517,7 @@ class EnumStackController : public ComboController {
   virtual void SyncToWidgetsImpl(void) {
     intConfig = static_cast<int>(*config);
     ComboController::DoSyncToWidgets();
-    for (uint i = 0; i < subManagers.size(); ++i) {
+    for (unsigned int i = 0; i < subManagers.size(); ++i) {
       subManagers[i]->SyncToWidgets();
     }
     stack->raiseWidget(intConfig);
@@ -534,7 +537,7 @@ class EnumStackController : public ComboController {
   {
     subManagerOwner.reserve(contents_.size());
     subManagers.reserve(contents_.size());
-    for (uint i = 0; i < contents_.size(); ++i) {
+    for (unsigned int i = 0; i < contents_.size(); ++i) {
       subManagerOwner.push_back(
           new WidgetControllerManager(this->PopupParent()));
       connect(subManagerOwner.back(), SIGNAL(widgetChanged()),

@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,15 +17,17 @@
 
 #include "fusion/fusionui/WidgetControllers.h"
 
-#include <qpushbutton.h>
-#include <qcolordialog.h>
-#include <qgroupbox.h>
-#include <qspinbox.h>
-#include <qlineedit.h>
-#include <qtextedit.h>
-#include <qvalidator.h>
-#include <qdatetime.h>
-#include <qlabel.h>
+#include <Qt/qpushbutton.h>
+#include <Qt/qcolordialog.h>
+#include <Qt/qgroupbox.h>
+#include <Qt/qspinbox.h>
+#include <Qt/qlineedit.h>
+#include <Qt/q3textedit.h>
+#include <Qt/qvalidator.h>
+#include <Qt/qdatetime.h>
+#include <Qt/qlabel.h>
+
+using QTextEdit = Q3TextEdit;
 
 #include <autoingest/.idl/storage/MapSubLayerConfig.h>
 
@@ -108,8 +111,15 @@ ColorButtonController::clicked(void)
   QColor orig_color = button->paletteBackgroundColor();
   QColor new_color = QColor(QColorDialog::getRgba(orig_color.rgb(), 0,
                                                   button));
+
   if (new_color != orig_color) {
-    button->setPaletteBackgroundColor(new_color);
+    QPalette palette;
+    palette.setColor(QPalette::Button, new_color);
+    button->setAutoFillBackground(true);
+    button->setPalette(palette);
+    button->setFlat(true);
+    button->update();
+
     EmitChanged();
   }
 }
@@ -129,7 +139,14 @@ ColorButtonController::SyncToWidgetsImpl(void)
 void
 ColorButtonController::MySyncToWidgetsImpl(void)
 {
-  button->setPaletteBackgroundColor(*config);
+  QPalette palette;
+  palette.setColor(QPalette::Button, *config);
+
+  button->setAutoFillBackground(true);
+  button->setPalette(palette);
+  button->setFlat(true);
+  button->update();
+
 }
 
 void ColorButtonController::Create(WidgetControllerManager &manager,
@@ -166,14 +183,14 @@ IconButtonController::SetIcon()
 void
 IconButtonController::SyncToConfig(void)
 {
-  icon_href_ = shield_.IconRef().href;
+  icon_href_ = shield_.IconRef().href.toUtf8().constData();
   icon_type_ = shield_.IconRef().type;
 }
 
 void
 IconButtonController::MySyncToWidgetsImpl(void)
 {
-  shield_ = gstIcon(IconReference(icon_type_, icon_href_));
+  shield_ = gstIcon(IconReference(icon_type_, icon_href_.c_str()));
   SetIcon();
 }
 
@@ -461,7 +478,7 @@ ComboController::ComboController(WidgetControllerManager &manager,
 {
   // populate the combo
   combo->clear();
-  for (uint i = 0; i < contents.size(); ++i) {
+  for (unsigned int i = 0; i < contents.size(); ++i) {
     combo->insertItem(contents[i].second);
   }
 
@@ -474,7 +491,7 @@ void
 ComboController::MySyncToWidgetsImpl(void)
 {
   // Find which entry is in the config
-  uint pos = 0;
+  unsigned int pos = 0;
   for (; pos < contents.size(); ++pos) {
     if (*config == contents[pos].first)
       break;

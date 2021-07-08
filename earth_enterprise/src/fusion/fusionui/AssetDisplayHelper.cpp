@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,11 +15,16 @@
 
 
 #include <khConstants.h>
-#include <qmime.h>
-#include <qdragobject.h>
+#include <QtGui/QMimeSource>
+#include <Qt/q3mimefactory.h>
+#include <Qt/qobject.h>
+#include <Qt/q3dragobject.h>
 #include <map>
 
 #include "AssetDisplayHelper.h"
+
+using QImageDrag = Q3ImageDrag;
+using QMimeSourceFactory = Q3MimeSourceFactory;
 
 AssetDisplayHelper::AssetKey AssetDisplayHelper::MakeKey(
     AssetDefs::Type t, const std::string &st) {
@@ -104,7 +110,7 @@ AssetDefs::Type AssetDisplayHelper::AssetType(AssetKey key) {
     AssetDefs::KML,
     AssetDefs::Invalid
   };
-  return types[static_cast<uint>(key)];
+  return types[static_cast< unsigned int> (key)];
 }
 
 std::string     AssetDisplayHelper::AssetSubType(AssetKey key) {
@@ -128,7 +134,7 @@ std::string     AssetDisplayHelper::AssetSubType(AssetKey key) {
     std::string()
   };
 
-  return sub_types[static_cast<uint>(key)];
+  return sub_types[static_cast< unsigned int> (key)];
 }
 
 QPixmap AssetDisplayHelper::Pixmap(AssetKey key) {
@@ -152,11 +158,12 @@ QPixmap AssetDisplayHelper::Pixmap(AssetKey key) {
     "failed_asset.png"
   };
 
-  return LoadPixmap(icon_names[static_cast<uint>(key)]);
+  return LoadPixmap(icon_names[static_cast< unsigned int> (key)]);
 }
 
 QString AssetDisplayHelper::PrettyName(AssetKey key)  {
-  static QString name_pairs[] = {
+  static const std::array<QString, 17> name_pairs
+  {{
     QObject::tr("folder"),
     QObject::tr("Vector Resource"),
     QObject::tr("Vector Layer"),
@@ -174,9 +181,9 @@ QString AssetDisplayHelper::PrettyName(AssetKey key)  {
     QObject::tr("Mercator Map Database"),
     QObject::tr("KML Project"),
     QObject::tr("Failed")
-  };
+  }};
 
-  return name_pairs[static_cast<uint>(key)];
+  return name_pairs[static_cast< unsigned int> (key)];
 }
 
 QPixmap AssetDisplayHelper::LoadPixmap(const QString& name) {

@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,8 +35,8 @@ class MercatorMapDatabaseAssetVersionImpl {
 
 namespace {
 
-uint kUnifiedIndexChildPos    = 0;
-uint kMapDBChildPos            = 1;
+unsigned int kUnifiedIndexChildPos    = 0;
+unsigned int kMapDBChildPos            = 1;
 
 }
 
@@ -64,7 +65,7 @@ class MercatorMapDatabaseAssetImplD {
  protected:
   void PostUpdate(void) { IncrementIndexVersion(); }
   static void PopulateInputs(const MapDatabaseConfig &config,
-                             std::vector<std::string> &inputs);
+                             std::vector<SharedString> &inputs);
 
  public:
   static void HandleEditRequest(const MapDatabaseEditRequest &);
@@ -73,7 +74,7 @@ class MercatorMapDatabaseAssetImplD {
 
   void IncrementIndexVersion(void) {
     config.indexVersion = (config.indexVersion + 1) %
-                          std::numeric_limits<uint32>::max();
+                          std::numeric_limits<std::uint32_t>::max();
     if (config.indexVersion == 0) {
       config.indexVersion = 1;
     }
@@ -108,7 +109,7 @@ class MercatorMapDatabaseAssetVersionImplD {
 
 
 void MercatorMapDatabaseAssetImplD::PopulateInputs(
-    const MapDatabaseConfig &config, std::vector<std::string> &inputs)
+    const MapDatabaseConfig &config, std::vector<SharedString> &inputs)
 {
   if (!config.imageryProject.empty()) {
     // Depends on imagery project sub-type detected based on the path extension,
@@ -117,16 +118,15 @@ void MercatorMapDatabaseAssetImplD::PopulateInputs(
         khHasExtension(config.imageryProject, kMercatorImageryProjectSuffix);
 
     if (is_mercator_imagery_project) {
-      MercatorRasterProjectFactory::ValidateRefForInput(config.imageryProject);
+      ValidateRefForInput<MercatorRasterProjectType>(config.imageryProject);
     } else {
-      RasterProjectFactory::ValidateRefForInput(config.imageryProject,
-                                                AssetDefs::Imagery);
+      ValidateRefForInput<RasterProjectType>(config.imageryProject, AssetDefs::Imagery);
     }
     inputs.push_back(config.imageryProject);
   }
 
   if (!config.mapProject.empty()) {
-    MapProjectFactory::ValidateRefForInput(config.mapProject);
+    ValidateRefForInput<MapProjectType>(config.mapProject);
 
     // make a projected map project for my input
     ProjectedMapProjectConfig proj_config(AssetDefs::MercatorProjection);
@@ -141,10 +141,11 @@ void MercatorMapDatabaseAssetImplD::PopulateInputs(
                                     "ProjectedProject");
 
     MutableProjectedMapProjectAssetD proj_asset =
-      ProjectedMapProjectFactory::FindMake(projected_proj_name,
-                                           makevec(config.mapProject),
-                                           khMetaData(),
-                                           proj_config);
+      FindMake<ProjectedMapProjectType>
+         (projected_proj_name,
+          makevec<SharedString>(config.mapProject),
+          khMetaData(),
+          proj_config);
     inputs.push_back(proj_asset->GetRef());
   }
 }
@@ -153,7 +154,7 @@ void
 MercatorMapDatabaseAssetImplD::HandleEditRequest(const MapDatabaseEditRequest &req)
 {
   // make sure the project assetRef's are valid
-  std::vector<std::string> inputs;
+  std::vector<SharedString> inputs;
   PopulateInputs(req.config, inputs);
 
   // normalize the supplied asset name
@@ -162,17 +163,15 @@ MercatorMapDatabaseAssetImplD::HandleEditRequest(const MapDatabaseEditRequest &r
                                   kMercatorMapDatabaseSubtype);
 
 
-  (void) MercatorMapDatabaseFactory::FindMake(dbname,
-                                      inputs,
-                                      req.meta,
-                                      req.config);
+  (void) FindMake<MercatorMapDatabaseType>
+         (dbname, inputs, req.meta, req.config);
 }
 
 void
 MercatorMapDatabaseAssetImplD::HandleNewRequest(const MapDatabaseEditRequest &req)
 {
   // make sure the project assetRef's are valid
-  std::vector<std::string> inputs;
+  std::vector<SharedString> inputs;
   PopulateInputs(req.config, inputs);
 
   // normalize the supplied asset name
@@ -181,7 +180,7 @@ MercatorMapDatabaseAssetImplD::HandleNewRequest(const MapDatabaseEditRequest &re
                                   kMercatorMapDatabaseSubtype);
 
 
-  (void) MercatorMapDatabaseFactory::MakeNew(dbname,
+  (void) MakeNew<MercatorMapDatabaseType>(dbname,
                                      inputs,
                                      req.meta,
                                      req.config);
@@ -192,7 +191,7 @@ void
 MercatorMapDatabaseAssetImplD::HandleModifyRequest(const MapDatabaseEditRequest &req)
 {
   // make sure the project assetRef's are valid
-  std::vector<std::string> inputs;
+  std::vector<SharedString> inputs;
   PopulateInputs(req.config, inputs);
 
   // normalize the supplied asset name
@@ -202,7 +201,8 @@ MercatorMapDatabaseAssetImplD::HandleModifyRequest(const MapDatabaseEditRequest 
 
 
   // find and modify the DB
-  (void) MercatorMapDatabaseFactory::FindAndModify(dbname,
+  (void) FindAndModify<MercatorMapDatabaseType>
+                                          (dbname,
                                            inputs,
                                            req.meta,
                                            req.config);
@@ -248,7 +248,7 @@ MercatorMapDatabaseAssetVersionImplD::DelayedBuildChildren(void)
   RasterProjectAssetVersionD rasterProject;
   ProjectedMapProjectAssetVersionD mapProject;
 
-  uint next = 0;
+  unsigned int next = 0;
   bool is_mercator_imagery_project = false;
 
   if (!config.imageryProject.empty()) {
@@ -277,7 +277,7 @@ MercatorMapDatabaseAssetVersionImplD::DelayedBuildChildren(void)
     std::string unified_index_asset_name
       (UnifiedIndexFactory::SubAssetName(assetRef, "unifiedindex"));
     std::vector<AssetVersion> index_input_versions;
-    std::vector<std::string>  index_input_verrefs;
+    std::vector<SharedString>  index_input_verrefs;
 
     UnifiedIndexConfig unified_index_config;
     if (mercatorRasterProject || rasterProject) {
@@ -308,7 +308,7 @@ MercatorMapDatabaseAssetVersionImplD::DelayedBuildChildren(void)
     }
 
     unified_index =
-      UnifiedIndexFactory::FindMakeAndUpdate(
+      FindMakeAndUpdate<UnifiedIndexType>(
           unified_index_asset_name,
           index_input_verrefs,
           khMetaData(),
@@ -324,7 +324,7 @@ MercatorMapDatabaseAssetVersionImplD::DelayedBuildChildren(void)
     std::string mapdb_asset_name
       (MapDBFactory::SubAssetName(assetRef, kMapdbBase));
     std::vector<AssetVersion> mapdb_input_versions;
-    std::vector<std::string>  mapdb_input_verrefs;
+    std::vector<SharedString>  mapdb_input_verrefs;
 
     // populate inputs
     // Adding the unified index as my input and registering that offline inputs
@@ -346,7 +346,7 @@ MercatorMapDatabaseAssetVersionImplD::DelayedBuildChildren(void)
                                   GEE_VERSION);
     // update the mapdb asset
     mapdb =
-      MapDBFactory::FindMakeAndUpdate(
+      FindMakeAndUpdate<MapDBType>(
           mapdb_asset_name,
           mapdb_input_verrefs,
           khMetaData(),

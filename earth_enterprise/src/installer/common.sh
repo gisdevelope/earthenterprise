@@ -20,8 +20,7 @@ BADHOSTNAMELIST=(empty linux localhost dhcp bootp)
 GEE="Google Earth Enterprise"
 GEES="$GEE Server"
 GEEF="$GEE Fusion"
-LONG_VERSION="5.2.2"
-SHORT_VERSION="5.2"
+LONG_VERSION="$(cat ../version.txt)"
 
 ROOT_USERNAME="root"
 
@@ -76,9 +75,25 @@ xml_file_get_xpath()
 
     # Warning: `xmllint --noent` doesn't recognize named entities like
     # "&lt;" and "&gt;":
-    echo "cat $XPATH" | xmllint --noent --nocdata --shell "$FILE" |
-    # Skip the first and the last line:
-        tail -n +2 | head -n -1
+    echo "cat $XPATH" | xmllint --noent --nonet --shell "$FILE" | tail -2 | head -1
+}
+
+is_package_installed()
+{
+    # args: $1: Ubuntu package
+    # args: $2: RHEL package
+
+    if [ "$MACHINE_OS" == "$UBUNTUKEY" ] && [ ! -z "$1" ]; then
+        if [[ ! -z "$(dpkg -l $1 | grep "^ii")" ]]; then
+            return 0
+        fi
+    elif { [ "$MACHINE_OS" == "$REDHATKEY" ] || [ "$MACHINE_OS" == "$CENTOSKEY" ]; } && [ ! -z "$2" ]; then
+        if [[ ! -z "$(rpm -qa | grep ^$2)" ]]; then
+            return 0
+        fi
+    fi
+
+    return 1
 }
 
 software_check()
@@ -89,20 +104,18 @@ software_check()
     # args: $2: Ubuntu package
     # args: $3: RHEL package
 
-    if [ "$MACHINE_OS" == "$UBUNTUKEY" ] && [ ! -z "$2" ]; then
-        if [[ -z "$(dpkg --get-selections | sed s:install:: | sed -e 's:\s::g' | grep ^$2\$)" ]]; then
+    if ! is_package_installed $2 $3 ; then
+        if [ "$MACHINE_OS" == "$UBUNTUKEY" ] && [ ! -z "$2" ]; then
             echo -e "\nInstall $2 and restart the $1."
             software_check_retval=1
-        fi
-    elif { [ "$MACHINE_OS" == "$REDHATKEY" ] || [ "$MACHINE_OS" == "$CENTOSKEY" ]; } && [ ! -z "$3" ]; then
-        if [[ -z "$(rpm -qa | grep ^$3\$)" ]]; then
+        elif { [ "$MACHINE_OS" == "$REDHATKEY" ] || [ "$MACHINE_OS" == "$CENTOSKEY" ]; } && [ ! -z "$3" ]; then
             echo -e "\nInstall $3 and restart the $1."
             software_check_retval=1
+        else
+            echo -e "\nThe installer could not determine your machine's operating system."
+            echo -e "Supported Operating Systems: ${SUPPORTED_OS_LIST[*]}\n"
+            software_check_retval=1
         fi
-    else 
-        echo -e "\nThe $1 could not determine your machine's operating system."
-        echo -e "Supported Operating Systems: ${SUPPORTED_OS_LIST[*]}\n"
-        software_check_retval=1
     fi
 
     return $software_check_retval
@@ -149,6 +162,17 @@ determine_os()
     return $retval
 }
 
+
+show_opengee_package_installed()
+{
+    #args: $1 "install" or "uninstall"
+    #args: $2 Software name, "Open GEE Fusion", "Open GEE Server"
+
+    echo -e "\nOpen GEE packages installed."
+    echo -e "Cannot $1 $2 because Open GEE packages have been installed with a package manager."
+}
+
+
 run_as_user() {
     local use_su=`su $1 -c 'echo -n 1' 2> /dev/null  || echo -n 0`
     if [ "$use_su" -eq 1 ] ; then
@@ -164,7 +188,7 @@ show_no_tmp_dir_message()
 {
     echo -e "\nThe temp install directory specified [$1] does not exist."
     echo -e "Please specify the path of the extracted install files or first run"
-    echo -e "scons [-j8] release=1 [installdir=$1] stage_install\n"
+    echo -e "python2.7 /usr/bin/scons [-j8] release=1 [installdir=$1] stage_install\n"
 }
 
 show_corrupt_tmp_dir_message()
@@ -172,7 +196,7 @@ show_corrupt_tmp_dir_message()
     echo -e "\nThe temp install directory specified [$1] is corrupt (failed on copy)."
     echo -e "Please see $2 for details"
     echo -e "Please specify the path of the extracted install files or first run"
-    echo -e "scons [-j8] release=1 [installdir=$1] stage_install\n"
+    echo -e "python2.7 /usr/bin/scons [-j8] release=1 [installdir=$1] stage_install\n"
 }
 
 check_bad_hostname() {
@@ -228,8 +252,8 @@ check_group() {
 
     # add group if it does not exist
     if [ -z "$GROUP_EXISTS" ]; then
-        groupadd -r $GROUPNAME &> /dev/null 
-        NEW_GEGROUP=true 
+        groupadd -r $GROUPNAME &> /dev/null
+        NEW_GEGROUP=true
     fi
 }
 
@@ -246,6 +270,11 @@ check_username() {
         # user already exists -- update primary group
         usermod -g $GROUPNAME $1
     fi
+    # if the user already existed but the directory had been removed at some point
+    if [ ! -d "$BASEINSTALLDIR_OPT/.users/$1" ]; then
+        mkdir -p $BASEINSTALLDIR_OPT/.users/$1
+    fi
+    chown -R $1:$GROUPNAME $BASEINSTALLDIR_OPT/.users/$1
 }
 
 create_links()
@@ -254,7 +283,7 @@ create_links()
 
     if [ ! -L "$BASEINSTALLDIR_OPT/etc" ]; then
         ln -s $BASEINSTALLDIR_ETC $BASEINSTALLDIR_OPT/etc
-    fi 
+    fi
 
     if [ ! -L "$BASEINSTALLDIR_OPT/log" ]; then
         ln -s $BASEINSTALLDIR_VAR/log $BASEINSTALLDIR_OPT/log
@@ -338,15 +367,15 @@ get_array_index()
 {
     # need to have a set test value -- technically, the return status is an unsigned 8 bit value, so negative numbers won't work
     # need a value large enough that can be tested against
-    local get_array_index_retval=$INVALID_INDEX 
+    local get_array_index_retval=$INVALID_INDEX
 
     # args $1: array
     # args $2: choice/selection
 
     local array_list=("${!1}")
     local selection=$2
-    
-    for i in "${!array_list[@]}"; 
+
+    for i in "${!array_list[@]}";
     do
         if [[ "${array_list[$i]}" == "${selection}" ]]; then
             get_array_index_retval=$i
@@ -361,7 +390,7 @@ prompt_to_action()
 {
     # args- $1: array
     # args- $2: repeatable prompt
-    
+
     local prompt_to_action_choice=""
     local prompt_to_action_validAnswers=("${!1}")
 
@@ -394,4 +423,48 @@ prompt_to_quit()
     fi
 
     return $prompt_to_quit_retval
+}
+
+# Returns the default user
+get_default_user()
+{
+	# $1 -- is file/directory from which to obtain user
+	# $2 -- user to return if file/directory does not exist (or unable to stat file)
+	local USER=$(stat --printf="%U" $1 2> /dev/null)
+	[ -z "$USER" ] && USER=$2
+	echo "$USER"
+}
+
+# Returns the default group
+get_default_group()
+{
+	# $1 -- is file/directory from which to obtain group
+	# $2 -- group to return if file/directory does not exist (or unable to stat file)
+	local GRP=$(stat --printf="%G" $1 2> /dev/null)
+	[ -z "$GRP" ] && GRP=$2
+	echo "$GRP"
+}
+
+# For given directory, array containing directory, size, available, and mount point
+get_volume_info()
+{
+	local info=()
+	local DIR=$1
+
+	# Check if dir exists.  If so, do a df at this point
+	while true; do
+		if [ -d "$DIR" ] ; then
+			info=($1 $(df -k $DIR --output=size,avail,target | tail -1))
+			break
+		fi
+
+		# Drop last part of path and retry
+		DIR=${DIR%/*}
+		# Check if reached the root
+		if [ -z $DIR ]; then
+			info=($1 $(df -k / --output=size,avail,target | tail -1))
+			break
+		fi
+	done
+	echo "${info[@]}"
 }

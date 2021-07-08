@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +33,7 @@ AssetVersionImpl::WorkingDir(const AssetVersionRef &ref)
   // this routine assumes a bound version versionRef if it is not bound
   // (i.e no version= or version=current) the resulting workingDir will
   // point to '<path>/ver000/' which shouldn't exists
-  uint vernum = 0;
+  unsigned int vernum = 0;
   FromString(boundref.Version(), vernum);
   std::ostringstream out;
   out << "ver" << std::setw(3) << std::setfill('0') << vernum;
@@ -43,9 +44,8 @@ AssetVersionImpl::WorkingDir(const AssetVersionRef &ref)
 void
 AssetVersionImpl::GetInputFilenames(std::vector<std::string> &out) const
 {
-  for (std::vector<std::string>::const_iterator i = inputs.begin();
-       i != inputs.end(); ++i) {
-    AssetVersion(*i)->GetOutputFilenames(out);
+  for (const auto &i : inputs) {
+    AssetVersion(i)->GetOutputFilenames(out);
   }
 }
 
@@ -59,16 +59,15 @@ CompositeAssetVersionImpl::GetOutputFilenames(std::vector<std::string> &out) con
 {
   // We only have outputs when we are succeeded, bad or offline
   if (state & (AssetDefs::Succeeded | AssetDefs::Bad | AssetDefs::Offline)) {
-    for (std::vector<std::string>::const_iterator c = children.begin();
-         c != children.end(); ++c) {
-      AssetVersion(*c)->GetOutputFilenames(out);
+    for (const auto &c : children) {
+      AssetVersion(c)->GetOutputFilenames(out);
     }
   }
 }
 
 
 std::string
-CompositeAssetVersionImpl::GetOutputFilename(uint i) const
+CompositeAssetVersionImpl::GetOutputFilename(unsigned int i) const
 {
   // We only have outputs when we are succeeded, bad or offline
   if (state & (AssetDefs::Succeeded | AssetDefs::Bad | AssetDefs::Offline)) {

@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +18,14 @@
 #ifndef KHSRC_FUSION_GST_GSTEARTHSTREAM_H__
 #define KHSRC_FUSION_GST_GSTEARTHSTREAM_H__
 
-#include <qcstring.h>
+#include <Qt3Support/q3cstring.h>
 #include <curl/curl.h>
 #include <khThread.h>
 #include <khEndian.h>
 #include "gst/gstQuadAddress.h"
 #include "keyhole/jpeg_comment_date.h"
 
-typedef uint16 ImageVersion;
+typedef std::uint16_t ImageVersion;
 class QuadtreePath;
 
 class gstEarthStream {
@@ -48,15 +49,15 @@ class gstEarthStream {
   // via a timemachine format query by prepending the db=tm and appending
   // the hex value of the date.
   bool GetRawImagePacket(const QuadtreePath &qt_path,
-                         const uint16 version,
+                         const std::uint16_t version,
                          const keyhole::JpegCommentDate& jpeg_date,
                          std::string *raw_packet);
   bool GetRawTerrainPacket(const QuadtreePath &qt_path,
-                           const uint16 version,
+                           const std::uint16_t version,
                            std::string *raw_packet);
   bool GetRawVectorPacket(const QuadtreePath &qt_path,
-                          const uint16 channel,
-                          const uint16 version,
+                          const std::uint16_t channel,
+                          const std::uint16_t version,
                           std::string *raw_packet);
   bool GetRawPacket(const std::string &url,
                     std::string *raw_packet);

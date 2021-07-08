@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,9 +40,10 @@ bool gstTXTFormat::DiscoverLayout(const char* fname,
   if (!csvfile.open(IO_ReadOnly | IO_Translate))
     return false;
 
-  QString firstline;
-  if (csvfile.readLine(firstline, 2048) == -1)
+  char buff[2048] { '\0' };
+  if (csvfile.readLine(buff, 2048) == -1)
     return false;
+  QString firstline(buff);
 
   gstRegistry::Group* layout = inforeg->locateGroup("Layout", 1);
   layout->addTag(new gstValue("delimited"))->SetName("FileType");
@@ -60,9 +62,9 @@ bool gstTXTFormat::DiscoverLayout(const char* fname,
   gstRegistry::Group *field_defs = layout->addGroup("FieldDefinitions");
 
   // look for coord fields
-  uint lat = 0;
-  uint lon = 0;
-  uint pos = 0;
+  unsigned int lat = 0;
+  unsigned int lon = 0;
+  unsigned int pos = 0;
   bool have_lat = false;
   bool have_lon = false;
   for (QStringList::Iterator it = fields.begin();
@@ -232,7 +234,7 @@ gstStatus gstTXTFormat::OpenFile() {
          table_->NumRows(), table_->NumColumns());
 
   if (getNotifyLevel() >= NFY_DEBUG) {
-    for (uint ii = 0; ii < table_->NumColumns(); ++ii)
+    for (unsigned int ii = 0; ii < table_->NumColumns(); ++ii)
       fprintf(stderr, "\t[%d] %s\n", ii, table_->GetHeader()->Name(ii).latin1());
   }
 
@@ -248,7 +250,7 @@ gstStatus gstTXTFormat::CloseFile() {
   return GST_OKAY;
 }
 
-gstGeodeHandle gstTXTFormat::GetFeatureImpl(uint32 layer, uint32 fidx) {
+gstGeodeHandle gstTXTFormat::GetFeatureImpl(std::uint32_t layer, std::uint32_t fidx) {
   // should be checked by gstSource before calling me
   assert(fidx < table_->NumRows() && layer == 0);
 
@@ -276,7 +278,7 @@ gstGeodeHandle gstTXTFormat::GetFeatureImpl(uint32 layer, uint32 fidx) {
   return new_geodeh;
 }
 
-gstRecordHandle gstTXTFormat::GetAttributeImpl(uint32 layer, uint32 fidx) {
+gstRecordHandle gstTXTFormat::GetAttributeImpl(std::uint32_t layer, std::uint32_t fidx) {
   // should be checked by gstSource before calling me
   assert(fidx < table_->NumRows() && layer == 0);
 

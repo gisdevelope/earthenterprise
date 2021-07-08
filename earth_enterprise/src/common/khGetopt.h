@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,7 +45,7 @@
 
 bool help;
 int argn;
-uint num_cpus = 2;
+unsigned int num_cpus = 2;
 std::string outdir;
 std::vector<std::string> wanted;
 enum Mode { Retro, Normal, Experimental };
@@ -73,7 +74,7 @@ options.vecOpt("want", wanted);
 
 // [--numcpus <num>]
 // where 1 <= num <= 4
-options.opt("numcpus", num_cpus, &khGetopt::RangeValidator<uint, 1, 4>);
+options.opt("numcpus", num_cpus, &khGetopt::RangeValidator<unsigned int, 1, 4>);
 
 // [{--scale <num> | --feet}]
 // Set the scale (e.g. translation ratio to meters). Optional, but exclusive.
@@ -245,14 +246,14 @@ class khGetopt {
         OptBase(name, true), t(t_), choices(choices_) { }
     virtual void handleArg(const char *arg) {
       std::string argstr(arg);
-      for (uint i = 0; i < choices.size(); ++i) {
+      for (unsigned int i = 0; i < choices.size(); ++i) {
         if (argstr == ToString(choices[i])) {
           t = choices[i];
           return;
         }
       }
       std::string choicestr;
-      for (uint i = 0; i < choices.size(); ++i) {
+      for (unsigned int i = 0; i < choices.size(); ++i) {
         choicestr += ToString(choices[i]) + "\n";
       }
       throw khSimpleException("Invalid value\n"
@@ -456,7 +457,17 @@ class khGetopt {
     }
   }
 
-
+  template <class T, T min, T max>
+  static void IsEvenNumberInRange(const T &arg) {
+    if (arg < min || arg > max) {
+      throw khSimpleException("Out of range >= ")
+          << min << " and <= " << max;
+    }
+    else if (arg % 2 != 0){
+      throw khSimpleException("Not an even number");
+    }
+  }
+  
   // Process all options, permuting non-options to the end
   // Will emit a warning and return false on failure,
   // otherwise argn will be updated to point to the first non-opt argment.

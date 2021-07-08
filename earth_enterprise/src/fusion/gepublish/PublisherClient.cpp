@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -493,7 +494,7 @@ bool PublisherClient::AddDatabase(const std::string& input_db_name,
     // Get database modification time based on {gedb/mapdb}/header.xml
     // timestamp.
     std::string header_file_path = norm_input_db_name + "/" + kHeaderXmlFile;
-    uint64 header_file_size = 0;
+    std::uint64_t header_file_size = 0;
     time_t header_file_mtime = 0;
     if (!khGetFileInfo(header_file_path, header_file_size, header_file_mtime)) {
       throw khSimpleErrnoException(
@@ -508,7 +509,7 @@ bool PublisherClient::AddDatabase(const std::string& input_db_name,
     stream_args += "&DbTimestamp=" + db_timestamp;
 
     // Get database size based on file sizes from push manifest.
-    uint64 db_size = 0;
+    std::uint64_t db_size = 0;
     for (size_t i = 0; i < stream_manifest.size(); ++i) {
       db_size += stream_manifest[i].data_size;
     }
@@ -708,7 +709,10 @@ bool PublisherClient::SyncDatabase(const std::string& db_name) {
 bool PublisherClient::PublishDatabase(const std::string& in_db_name,
                                       const std::string& in_target_path,
                                       const std::string& vh_name,
-                                      const bool ec_default_db) {
+                                      const bool ec_default_db,
+                                      const bool poi_search,
+                                      const bool enhanced_search,
+                                      const bool serve_wms) {
   try {
     std::string target_path = NormalizeTargetPath(in_target_path);
     if (target_path.empty()) {
@@ -750,8 +754,17 @@ bool PublisherClient::PublishDatabase(const std::string& in_db_name,
     stream_args += "&VirtualHostName=" + stream_vs_name;
     stream_args += "&TargetPath=" + target_path;
     stream_args += "&DbType=" + Itoa(db_manifest.GetDbType());
-    if (ec_default_db) { 
+    if (poi_search) {
+      stream_args += "&SearchDefName=POISearch";
+      if (enhanced_search) {
+        stream_args += "&PoiFederated=1";
+      }
+    }
+    if (ec_default_db) {
       stream_args += "&EcDefaultDb=1" ;
+    }
+    if (serve_wms) {
+      stream_args += "&ServeWms=1";
     }
     std::vector<std::string> empty_vector;
     if (!ProcessPublishGetRequest(
@@ -985,7 +998,7 @@ bool PublisherClient::ListVirtualHosts(std::vector<std::string>* vs_names,
   *vs_names = header_map[PublisherConstants::kHdrVsName];
   *vs_urls = header_map[PublisherConstants::kHdrVsUrl];
 
-  for (uint i = 0; i < vs_urls->size(); ++i) {
+  for (unsigned int i = 0; i < vs_urls->size(); ++i) {
     std::string& vs_url = (*vs_urls)[i];
     if (vs_url[0] == '/')
       vs_url = ServerUrl(STREAM_SERVER) + vs_url;
@@ -1103,8 +1116,8 @@ bool PublisherClient::ListSearchDefs(
 }
 
 bool PublisherClient::GarbageCollect(ServerType server_type,
-                                     uint32* delete_count,
-                                     uint64* delete_size) {
+                                     std::uint32_t* delete_count,
+                                     std::uint64_t* delete_size) {
   std::string args = "Cmd=GarbageCollect";
   HeaderMap header_map;
   header_map[PublisherConstants::kHdrDeleteCount] = std::vector<std::string>();
@@ -1270,7 +1283,7 @@ bool PublisherClient::UploadFiles(ServerType server_type,
     return false;
   }
 
-  int64 processed_size = 0;
+  std::int64_t processed_size = 0;
   if (is_server_host_same_as_publishing)  {
     notify(NFY_DEBUG, "Transfering files locally");
     size_t num_entries = entries.size();
@@ -1355,7 +1368,7 @@ bool PublisherClient::SyncFiles(
         upload_entries.push_back(manifest_entries[index]);
 
         // some files are 'dependent files' that are not part of the original manifest reported to
-        // server but we still need to upload those files as they complete the specified file in the 
+        // server but we still need to upload those files as they complete the specified file in the
         // original manifest.  We can't include the file in the original manifest because in cases
         // like search manifests server does special processing on files in that manifest that
         // can't be done on the dependent files.
@@ -1366,13 +1379,13 @@ bool PublisherClient::SyncFiles(
 
       // Compute total files size for progress reporting on first try only.
       if (progress_ != NULL && cur_retry == 0) {
-        uint64 total_size = 0;
+        std::uint64_t total_size = 0;
         for (size_t i = 0; i < upload_entries.size(); ++i) {
           total_size += upload_entries[i].data_size;
         }
         notify(NFY_DEBUG, "Total files to push: %zu, size (bytes): %zu",
                upload_entries.size(), total_size);
-        progress_->incrementTotal(static_cast<int64>(total_size));
+        progress_->incrementTotal(static_cast<std::int64_t>(total_size));
       } else {
         notify(NFY_DEBUG, "Total files to push: %zu",
                upload_entries.size());
@@ -1402,7 +1415,7 @@ bool PublisherClient::SyncFiles(
 int PublisherClient::LocateEntry(const std::vector<ManifestEntry>& entries,
                                  const std::string& file_path) {
   int index = -1;
-  for (uint i = 0; i < entries.size(); ++i) {
+  for (unsigned int i = 0; i < entries.size(); ++i) {
     if (entries[i].orig_path == file_path)
       return i;
   }

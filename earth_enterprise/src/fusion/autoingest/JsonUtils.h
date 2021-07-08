@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google Inc. Copyright 2018 the Open GEE Contributors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,8 +31,6 @@ class QString;
 // JsonUtils is a static utility class for formatting JSON text for
 // Earth and Maps databases.
 class JsonUtils {
- private:
-  JsonUtils() {}  // Static class. Do not allow construction.
 
  public:
   // Create the JSON buffer for a Google Earth Database.
@@ -70,6 +68,10 @@ class JsonUtils {
     const std::string& locale);
 
  protected:
+  //this was private because the class was intended to be 
+  //"static" but made protected to allow for unit testing
+  JsonUtils() {}  
+
   // Create a JSON string for a set of search tabs.
   // search_tabs: the list of search tab definitions
   // return: the JSON string for the search tabs
@@ -143,7 +145,7 @@ class JsonUtils {
     return value ? "true" : "false";
   }
 
-  // Utilility for converting a look-at point spec to JSON object.
+  // Utilitiy for converting a look-at point spec to JSON object.
   // lookAtSpec: a string with the following format
   //   longitude|latitude|altitude|...
   //   we only care for these 3.

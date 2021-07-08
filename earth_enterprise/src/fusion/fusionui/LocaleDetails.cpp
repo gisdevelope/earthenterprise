@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,21 +14,22 @@
 // limitations under the License.
 
 
-#include <qheader.h>
-#include <qcombobox.h>
-#include <qgroupbox.h>
-#include <qlineedit.h>
-#include <qvalidator.h>
-#include <qregexp.h>
-#include <qpushbutton.h>
-#include <qobjectlist.h>
-#include <qlayout.h>
-#include <qlabel.h>
-#include <qstringlist.h>
-#include <qmessagebox.h>
-#include <qpopupmenu.h>
-#include <qpainter.h>
-#include <qcursor.h>
+
+#include <Qt/q3header.h>
+using QHeader = Q3Header;
+#include <Qt/qcombobox.h>
+#include <Qt/qgroupbox.h>
+#include <Qt/qlineedit.h>
+#include <Qt/qvalidator.h>
+#include <Qt/qregexp.h>
+#include <Qt/qpushbutton.h>
+#include <Qt/qlayout.h>
+#include <Qt/qlabel.h>
+#include <Qt/qstringlist.h>
+#include <Qt/qmessagebox.h>
+#include <Qt/q3popupmenu.h>
+#include <Qt/qpainter.h>
+#include <Qt/qcursor.h>
 
 #include <gstIconManager.h>
 #include <gstSource.h>
@@ -41,8 +43,10 @@
 #include "Preferences.h"
 #include "LayerLegendWidget.h"
 
-
-
+using QTable = Q3Table;
+using QTableItem = Q3TableItem;
+using QScrollView = Q3ScrollView;
+using QPopupMenu = Q3PopupMenu;
 
 // ****************************************************************************
 // ***  ItemBase
@@ -649,7 +653,7 @@ LocaleDetails::LocaleDetails(
 
 
   QHeader* header = table_->verticalHeader();
-  for (uint i = 0; i < field_list_.size(); ++i) {
+  for (unsigned int i = 0; i < field_list_.size(); ++i) {
     int row = i;
     switch (field_list_[i]) {
       case FIELD_ICON:
@@ -743,7 +747,7 @@ void LocaleDetails::SyncToConfig(void) {
 
   LocaleConfig empty_locale;
   locale_map_config_->clear();
-  for (uint i = 1; i < locale_cols_.size(); ++i) {
+  for (unsigned int i = 1; i < locale_cols_.size(); ++i) {
     locale_cols_[i]->SyncToConfig();
     LocaleConfig new_locale = locale_cols_[i]->GetConfig();
     if (new_locale != empty_locale) {
@@ -821,7 +825,7 @@ LocaleColumn::LocaleColumn(
 
   table->horizontalHeader()->setLabel(col, locale_name);
 
-  for (uint i = 0; i < field_list.size(); ++i) {
+  for (unsigned int i = 0; i < field_list.size(); ++i) {
     int row = i;
     switch (field_list[i]) {
       case LocaleDetails::FIELD_ICON:
@@ -896,7 +900,7 @@ LocaleColumn::LocaleColumn(
 
 
 void LocaleColumn::SyncToConfig(void) {
-  for (uint i = 0; i < items_.size(); ++i) {
+  for (unsigned int i = 0; i < items_.size(); ++i) {
     items_[i]->SyncToConfig();
   }
 }

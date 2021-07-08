@@ -1,6 +1,6 @@
 #-*- Python -*-
 #
-# Copyright 2017 Google Inc.
+# Copyright 2017 Google Inc. Copyright 2018 the Open GEE Contributors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 
 Import('env')
 import string
+import os 
 origenv = env;
 
 # let subdirs refer to headers as relative to the autoingest directory
@@ -26,13 +27,13 @@ env.Append(CPPPATH = ['#fusion/autoingest', # static header files
                       ])
 
 
-idlfiles = [ 'storage/deprecated/ReprojectConfig',
+idlfiles = [ 'AssetStorage',
+             'storage/deprecated/ReprojectConfig',
              'storage/deprecated/BlendConfig',
              'storage/deprecated/TmeshConfig',
              'storage/deprecated/CopyrightConfig',
              'storage/deprecated/RasterKHDBConfig',
              'storage/deprecated/VectorKHDBConfig',
-             'AssetStorage',
              'TaskLists', 'gstProvider', 'Locale', 'ServerCombination',
              'Snippet',
              'AssetChanges', 'VolumeStorage', 'StreamServers',
@@ -91,14 +92,14 @@ idlfiles = [ 'storage/deprecated/ReprojectConfig',
 env.idl(map(lambda n: n+'.idl', idlfiles))
 
 
-plugins = [ 'deprecated/Reproject',
+plugins = [ 'Source',
+            'deprecated/Reproject',
             'deprecated/Blend',
             'deprecated/Tmesh',
             'deprecated/Copyright',
             'deprecated/RasterKHDB',
             'deprecated/ImeshKHDB',
             'deprecated/VectorKHDB',
-            'Source',
             'Mosaic',
             'Maskgen',
             'KRP',
@@ -148,10 +149,8 @@ for plugin in plugins:
     env.Command('plugins/'+plugin+'Asset.cpp',
                 [ 'AssetGenPublicCpp.pl', 'AssetGen.pm', src ],
                 [ "${SOURCES[0]} ${SOURCES[2]} $TARGET" ])
-
-env.Command('LoadAny.cpp',
-            [ 'LoadAnyGen.pl' ],
-            [ "$SOURCE --cppfile $TARGET " + string.join(plugins, ' ') ])
+    env.Depends('plugins/'+plugin+'Asset.os', 'plugins/'+plugin+'Asset.h')
+    env.Depends('plugins/'+plugin+'Asset.os', 'plugins/'+plugin+'Asset.cpp')
 
 env.Command('ReadOnlyFromStorage.cpp',
             [ 'FromStorageGen.pl' ],
@@ -170,18 +169,30 @@ env.Command('khAssetManagerProxy.cpp',
 commoncpp = [
     'AssetVersionRef.cpp', 'khFusionURI.cpp',
     'Asset.cpp', 'AssetVersion.cpp',
-    'Misc.cpp', 'AvailId.cpp', 'LoadAny.cpp', 'khVolumeManager.cpp',
+    'Misc.cpp', 'AvailId.cpp', 'khVolumeManager.cpp',
     'FusionConnection.cpp', 'AssetChangeListener.cpp',
     'AssetDefsExtra.cpp', 'VectorProjectConfigImpl.cpp',
     'LayerConfigImpl.cpp', 'MapProjectConfigImpl.cpp',
     'QueryConfigImpl.cpp', 'AssetTraverser.cpp',
     'geAssetRoot.cpp', 'SearchTabReferenceImpl.cpp',
-    'JsonUtils.cpp'
+    'JsonUtils.cpp', 'JsUtils.cpp'
     ] + \
     map(lambda n: '.idl/'+n+'.cpp', idlfiles) + \
     map(lambda p: 'plugins/'+p+'Asset.cpp', plugins)
 
+commonh = map(lambda n: '.idl/'+n+'.h', idlfiles)
+
+for idlfile in idlfiles:
+    osfile = idlfile + '.os'
+    env.Depends(osfile, commonh)
+
 commonobj = map(lambda src: env.SharedObject(src), commoncpp)
+
+for obj in commonobj:
+    env.Depends(obj, commonh)
+
+for cppfile in commoncpp:
+    env.Depends(os.path.splitext(cppfile)[0] + '.obj', commonh)
 
 
 geautoingest = env.sharedLib('geautoingest',
@@ -190,7 +201,7 @@ geautoingest = env.sharedLib('geautoingest',
                                            'khAssetManagerProxy.cpp',
                                            env['FUSIONVER'] ],
                              LIBS=['gesearchtabs', 'gemiscconfig', 'genet',
-                                   'geindex_r', 'geutil', 'qt-mt']
+                                   'geindex_r', 'geutil', 'QtCore','QtGui']
                              )
 
 
@@ -200,11 +211,40 @@ gemiscconfig = env.sharedLib('gemiscconfig',
                               '.idl/Systemrc.cpp'],
                              LIBS=['gexml'])
 
+env.Depends('MiscConfig.os', ['.idl/Systemrc.h', '.idl/MiscConfigStorage.h'])
+env.Depends('.idl/MiscConfigStorage.os', ['.idl/Systemrc.h', '.idl/MiscConfigStorage.h'])
+env.Depends('.idl/Systemrc.os', ['.idl/Systemrc.h', '.idl/MiscConfigStorage.h'])
+
 env.install('common_lib', [geautoingest, gemiscconfig])
 
 env.test('AssetDefsExtra_unittest',
          'AssetDefsExtra_unittest.cpp',
          LIBS=['geautoingest', 'gemiscconfig', 'gtest'])
 
+env.test('AssetSerializer_unittest',
+         'AssetSerializer_unittest.cpp',
+          LIBS=['gecommon', 'gexml', 'QtCore','QtGui',  'xerces-c', 'gtest'])
+
+env.test('AssetFactory_unittest',
+         'AssetFactory_unittest.cpp',
+         LIBS=['gecommon', 'gtest', 'geautoingest', 'geutil', 'QtCore', 'QtGui', 'xerces-c'])
+
+env.test('JsUtils_unittest',
+         'JsUtils_unittest.cpp',
+         LIBS=['geautoingest', 'gemiscconfig', 'gtest'])
+
+env.test('JsonUtils_unittest',
+         'JsonUtils_unittest.cpp',
+         LIBS=['geautoingest', 'gemiscconfig', 'gtest'])
+
+env.test('StorageManager_unittest',
+         'StorageManager_unittest.cpp',
+         LIBS=['gecommon', 'gemiscconfig', 'gtest', 'QtCore', 'QtGui', 'xerces-c', 'gexml'])
+
+env.test('StorageManagerAssetHandle_unittest',
+         'StorageManagerAssetHandle_unittest.cpp',
+         LIBS=['gecommon', 'gtest'])
+
 SConscript('sysman/SConscript', exports=['env', 'commonobj', 'plugins'])
 SConscript('tools/SConscript', exports='env')
+SConscript('memory-tests/SConscript', exports=['env'])

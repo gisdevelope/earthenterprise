@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +16,7 @@
 
 #include <autoingest/.idl/storage/MapSubLayerConfig.h>
 #include <autoingest/.idl/storage/AssetDefs.h>
+#requiresgetheapusage
 
 #cppquote
 #include <autoingest/.idl/storage/MapSubLayerConfig_impl.h>
@@ -30,7 +32,7 @@ class MapLayerLevelConfig {
 #pragma GenerateIsUpToDate
   };
 
-  uint level_;
+  unsigned int level_;
   AssetDefs::Projection   projection_;
   std::vector<SubLayer> sub_layers_ = std::vector<MapLayerLevelConfig::SubLayer>();
 

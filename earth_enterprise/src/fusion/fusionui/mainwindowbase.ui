@@ -1,6 +1,7 @@
 <!DOCTYPE UI><UI version="3.3" stdsetdef="1">
 <class>MainWindowBase</class>
-<comment>  Copyright 2017 Google Inc.
+<comment>  Copyright 2020 the Open GEE Contributors.
+ Copyright 2017 Google Inc.
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
  You may obtain a copy of the License at
@@ -107,7 +108,6 @@
     </item>
     <item text="&amp;Help" name="help_menu">
         <action name="helpmanual"/>
-        <separator/>
         <action name="helpAction"/>
     </item>
 </menubar>
@@ -194,7 +194,32 @@
                 <string>Move to Placemark</string>
             </property>
         </widget>
-        <widget class="Spacer">
+        <widget class="QLabel">
+            <property name="name">
+                <cstring>textLabel1</cstring>
+            </property>
+            <property name="text">
+                <string>Preview Projection:</string>
+            </property>
+        </widget>
+        <widget class="Q3ComboBox">
+            <item>
+                <property name="text">
+                    <string>Flat</string>
+                </property>
+            </item>
+            <item>
+                <property name="text">
+                    <string>Mercator</string>
+                </property>
+            </item>
+            <property name="name">
+                <cstring>previewProjection</cstring>
+            </property>
+        </widget>
+        <!-- Relies originally on Qt3 Spacer, which is QSpacerItem,
+             This has changed significantly in Qt4, making it almost useless
+          <widget class="QSpacerItem">
             <property name="name">
                 <cstring>spacer1</cstring>
             </property>
@@ -210,30 +235,8 @@
                     <height>27</height>
                 </size>
             </property>
-        </widget>
-        <widget class="QLabel">
-            <property name="name">
-                <cstring>textLabel1</cstring>
-            </property>
-            <property name="text">
-                <string>Preview Projection:</string>
-            </property>
-        </widget>
-        <widget class="QComboBox">
-            <item>
-                <property name="text">
-                    <string>Flat</string>
-                </property>
-            </item>
-            <item>
-                <property name="text">
-                    <string>Mercator</string>
-                </property>
-            </item>
-            <property name="name">
-                <cstring>previewProjection</cstring>
-            </property>
-        </widget>
+        </widget>-->
+
     </toolbar>
 </toolbars>
 <customwidgets>
@@ -282,7 +285,7 @@
             <cstring>fileNewAction</cstring>
         </property>
         <property name="iconSet">
-            <iconset>filenew</iconset>
+            <iconset>:/filenew</iconset>
         </property>
         <property name="text">
             <string>New</string>
@@ -299,7 +302,7 @@
             <cstring>fileOpenAction</cstring>
         </property>
         <property name="iconSet">
-            <iconset>fileopen</iconset>
+            <iconset>:/fileopen</iconset>
         </property>
         <property name="text">
             <string>Open</string>
@@ -319,7 +322,7 @@
             <cstring>filePrintAction</cstring>
         </property>
         <property name="iconSet">
-            <iconset>print</iconset>
+            <iconset>:/print</iconset>
         </property>
         <property name="text">
             <string>Print</string>
@@ -333,7 +336,7 @@
             <cstring>fileExitAction</cstring>
         </property>
         <property name="iconSet">
-            <iconset>exit.png</iconset>
+            <iconset>:/exit.png</iconset>
         </property>
         <property name="text">
             <string>Exit</string>
@@ -372,7 +375,7 @@
                 <bool>true</bool>
             </property>
             <property name="iconSet">
-                <iconset>select.xpm</iconset>
+                <iconset>:/select.xpm</iconset>
             </property>
             <property name="text">
                 <string>Select</string>
@@ -395,7 +398,7 @@
                 <bool>true</bool>
             </property>
             <property name="iconSet">
-                <iconset>zoombox.xpm</iconset>
+                <iconset>:/zoombox.xpm</iconset>
             </property>
             <property name="text">
                 <string>ZoomBox</string>
@@ -418,7 +421,7 @@
                 <bool>true</bool>
             </property>
             <property name="iconSet">
-                <iconset>zoomdrag.xpm</iconset>
+                <iconset>:/zoomdrag.xpm</iconset>
             </property>
             <property name="text">
                 <string>ZoomDrag</string>
@@ -441,7 +444,7 @@
                 <bool>true</bool>
             </property>
             <property name="iconSet">
-                <iconset>hand.xpm</iconset>
+                <iconset>:/hand.xpm</iconset>
             </property>
             <property name="text">
                 <string>Pan</string>
@@ -464,7 +467,7 @@
                 <bool>true</bool>
             </property>
             <property name="iconSet">
-                <iconset>edit_tool.png</iconset>
+                <iconset>:/edit_tool.png</iconset>
             </property>
             <property name="text">
                 <string>Edit</string>
@@ -488,7 +491,7 @@
             <bool>true</bool>
         </property>
         <property name="iconSet">
-            <iconset>grids.xpm</iconset>
+            <iconset>:/grids.xpm</iconset>
         </property>
         <property name="text">
             <string>Action</string>
@@ -570,7 +573,7 @@
             <cstring>projectNewAction</cstring>
         </property>
         <property name="iconSet">
-            <iconset>project_new.png</iconset>
+            <iconset>:/project_new.png</iconset>
         </property>
         <property name="text">
             <string>&amp;New</string>
@@ -584,7 +587,7 @@
             <cstring>projectOpenAction</cstring>
         </property>
         <property name="iconSet">
-            <iconset>project_open.png</iconset>
+            <iconset>:/project_open.png</iconset>
         </property>
         <property name="text">
             <string>&amp;Open...</string>
@@ -601,7 +604,7 @@
             <bool>false</bool>
         </property>
         <property name="iconSet">
-            <iconset>fileclose.png</iconset>
+            <iconset>:/fileclose.png</iconset>
         </property>
         <property name="text">
             <string>&amp;Close</string>
@@ -691,7 +694,7 @@
             <bool>false</bool>
         </property>
         <property name="iconSet">
-            <iconset>make_kdevelop.png</iconset>
+            <iconset>:/make_kdevelop.png</iconset>
         </property>
         <property name="text">
             <string>&amp;Build...</string>
@@ -719,7 +722,7 @@
             <bool>false</bool>
         </property>
         <property name="iconSet">
-            <iconset>project_save.png</iconset>
+            <iconset>:/project_save.png</iconset>
         </property>
         <property name="text">
             <string>Save</string>
@@ -878,6 +881,9 @@
         </property>
         <property name="menuText">
             <string>&amp;Contents</string>
+        </property>
+        <property name="visible">
+            <bool>false</bool>
         </property>
     </action>
     <action>
@@ -1357,6 +1363,9 @@
 </slots>
 <pixmapinproject/>
 <layoutdefaults spacing="6" margin="8"/>
+<includes>
+    <include location="global" impldecl="in declaration">Qt/qobjectdefs.h</include>
+</includes>
 <includehints>
     <includehint>GfxView.h</includehint>
 </includehints>

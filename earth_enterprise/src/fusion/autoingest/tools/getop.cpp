@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,9 +23,12 @@
 #include <fusionversion.h>
 #include <config/gefConfigUtil.h>
 #include <autoingest/.idl/Systemrc.h>
+#include "MiscConfig.h"
 
 // global for convenience
 int numcols = 80;
+
+static const std::string SYS_MGR_BUSY_MSG = "GetCurrTasks: " + sysManBusyMsg;
 
 void
 outline(const char *format, ...)
@@ -65,9 +69,29 @@ usage(const std::string &progn, const char *msg = 0, ...)
           "\nusage: %s [options]\n"
           "   Supported options are:\n"
           "      --help | -?:       Display this usage message\n"
-          "      --delay <seconds>: Seconds to wait between refreshes\n",
+          "      --delay <seconds>: Seconds to wait between refreshes\n"
+          "      --timeout <seconds>: Seconds to set as timeout for gesystemmanager repsonses.\n",
           progn.c_str());
   exit(1);
+}
+
+// Convert the amount of memory used by caches to a more easily read format
+std::string
+readableMemorySize(std::uint64_t size) {
+  double readable = static_cast<double>(size);
+  const std::array<std::string, 9> units = {"B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"};
+  std::uint8_t i = 0;
+  std::stringstream memoryUsed;
+
+  while (readable > 1024) {
+    readable /= 1024;
+    i++;
+  }
+
+  memoryUsed << std::fixed;
+  memoryUsed.precision(2);
+  memoryUsed << readable << ' ' << units[i];
+  return memoryUsed.str();
 }
 
 int
@@ -78,29 +102,38 @@ main(int argc, char *argv[])
     int argn;
     bool help  = false;
     int delay = 5;
+    int timeout = 60;
     khGetopt options;
     options.flagOpt("help", help);
     options.flagOpt("?", help);
     options.opt("delay", delay);
+    options.opt("timeout", timeout);
     if (!options.processAll(argc, argv, argn))
       usage(progname);
     if (help)
       usage(progname);
     if (delay <= 0)
       usage(progname, "--delay must be positive");
-
+    if (timeout < 0)
+      usage(progname, "--timeout must not be less than zero");
 
     std::string master    = AssetDefs::MasterHostName();
     std::string assetroot = AssetDefs::AssetRoot();
     CmdLine clearscreen;
     clearscreen << "clear";
+    outline("Connecting to gesystemmanager to retrieve status...");
 
     while (1) {
       QString error;
       TaskLists taskLists;
       if (!khAssetManagerProxy::GetCurrTasks("dummy", taskLists,
-                                             error)) {
-        notify(NFY_FATAL, "%s", error.latin1());
+                                             error, timeout)) {
+      	if (error.compare("GetCurrTasks: socket recvall: Resource temporarily unavailable") == 0)
+          outline("No data received from gesystemmanager\nStarting new request");
+        else if (error.compare(SYS_MGR_BUSY_MSG.c_str()) == 0)
+          outline("System Manager is busy.  Retrying in %d seconds", delay);
+        else
+          notify(NFY_FATAL, "%s", error.latin1());
       } else {
         // get the list of active keyhole processes
         std::vector<std::string> pslist;
@@ -181,7 +214,7 @@ main(int argc, char *argv[])
         for (std::vector<TaskLists::WaitingTask>::const_iterator w =
                taskLists.waitingTasks.begin();
              w != taskLists.waitingTasks.end(); ++w) {
-          if (numlines > 5) {
+          if (numlines > 6) {
             outline("  %s", w->verref.c_str());
             --numlines;
             if (!w->activationError.isEmpty()) {
@@ -197,9 +230,9 @@ main(int argc, char *argv[])
 
         outline("");
         outline("Fusion processes on this host:");
-        numlines -= 5;
+        numlines -= 6;
 
-        for (uint i = 0; i < pslist.size(); ++i) {
+        for (unsigned int i = 0; i < pslist.size(); ++i) {
           if (numlines > 2) {
             outline("%s", pslist[i].c_str());
             --numlines;
@@ -209,10 +242,15 @@ main(int argc, char *argv[])
             break;
           }
         }
+
         outline("");
-        outline("Number of cached assets: %u", taskLists.num_assets_cached);
-        outline("Number of cached asset versions: %u",
-                taskLists.num_assetversions_cached);
+        outline("Number of cached assets: %u, Approx. memory used: %s",
+                taskLists.num_assets_cached,
+                readableMemorySize(taskLists.asset_cache_memory).c_str());
+        outline("Number of cached asset versions: %u, Approx. memory used: %s",
+                taskLists.num_assetversions_cached,
+                readableMemorySize(taskLists.version_cache_memory).c_str());
+        outline("Number of strings cached: %u", taskLists.str_store_size);
 
       }
       sleep(delay);

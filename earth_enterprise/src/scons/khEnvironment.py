@@ -21,12 +21,12 @@ central place and reuse it in all SConscripts as much as possible.
 """
 
 import errno
-import git
 import os
 import os.path
 import sys
 import time
 from datetime import datetime
+from getversion import open_gee_version
 import SCons
 from SCons.Environment import Environment
 
@@ -187,11 +187,11 @@ def EmitBuildDateStrfunc(target, build_date):
   return 'EmitBuildDate(%s, %s)' % (target, build_date)
 
 
-def EmitVersionHeaderFunc(target, backupFile):
+def EmitVersionHeaderFunc(target):
   """Emit version information to the target file."""
 
-  versionStr = GetVersion(backupFile)
-  longVersionStr = GetLongVersion(backupFile)
+  versionStr = open_gee_version.get_short()
+  longVersionStr = open_gee_version.get_long()
 
   fp = open(target, 'w')
   fp.writelines(['// DO NOT MODIFY - auto-generated file\n',
@@ -203,175 +203,60 @@ def EmitVersionHeaderFunc(target, backupFile):
   fp.close()
 
 
-def EmitVersionHeaderStrfunc(target, backupFile):
-  return 'EmitVersionHeader(%s, %s)' % (target, backupFile)
+def EmitVersionHeaderStrfunc(target):
+  return 'EmitVersionHeader(%s)' % (target,)
   
 
-def EmitVersionFunc(target, backupFile):
+def EmitVersionFunc(target):
   """Emit version information to the target file."""
 
-  versionStr = GetVersion(backupFile)
-
-  with open(target, 'w') as fp:
-    fp.write(versionStr)
-  
-  with open(backupFile, 'w') as fp:
-    fp.write(versionStr)
-
-
-def EmitVersionStrfunc(target, backupFile):
-  return 'EmitVersion(%s, %s)' % (target, backupFile)
-  
-  
-def EmitLongVersionFunc(target, backupFile):
-  """Emit version information to the target file."""
-
-  versionStr = GetLongVersion(backupFile)
+  versionStr = open_gee_version.get_short()
 
   with open(target, 'w') as fp:
     fp.write(versionStr)
 
-
-def EmitLongVersionStrfunc(target, backupFile):
-  return 'EmitLongVersion(%s, %s)' % (target, backupFile)
-  
-
-def GetLongVersion(backupFile):
-  """Create a detailed version string based on the state of
-     the software, as it exists in the repository."""
-  
-  if CheckGitAvailable():
-    return GitGeneratedLongVersion()
-
-  # Without git, must use the backup file to create a string.
-  base = ReadBackupVersionFile(backupFile)
-  date = datetime.utcnow().strftime("%Y%m%d%H%M")
-  
-  return '-'.join([base, date])
+  with open(open_gee_version.backup_file, 'w') as fp:
+    fp.write(versionStr)
 
 
-def GetVersion(backupFile):
-  """As getLongVersion(), but only return the leading *.*.* value."""
-
-  raw = GetLongVersion(backupFile)
-  final = raw.split("-")[0]
-
-  return final
+def EmitVersionStrfunc(target):
+  return 'EmitVersion(%s)' % (target,)
 
 
-def GetRepository():
-    """Get a reference to the Git Repository.
-    Is there a cleaner option than searching from the current location?"""
+def EmitLongVersionFunc(target):
+  """Emit version information to the target file."""
 
-    # The syntax is different between library versions (particularly,
-    # those used by Centos 6 vs Centos 7).
-    try:
-        return git.Repo('.', search_parent_directories=True)
-    except TypeError:
-        return git.Repo('.')
- 
+  versionStr = open_gee_version.get_long()
 
-def CheckGitAvailable():
-    """Try the most basic of git commands, to see if there is
-       currently any access to a repository."""
-    
-    try:
-        repo = GetRepository()
-    except git.exc.InvalidGitRepositoryError:
-        return False
-    
-    return True
+  with open(target, 'w') as fp:
+    fp.write(versionStr)
 
 
-def CheckDirtyRepository():
-    """Check to see if the repository is not in a cleanly committed state."""
+def EmitLongVersionStrfunc(target):
+  return 'EmitLongVersion(%s)' % (target,)
 
-    repo = GetRepository()
-    str = repo.git.status("--porcelain")
-    
-    # Ignore version.txt for this purpose, as a build may modify the file
-    # and lead to an erroneous interpretation on repeated consecutive builds.
-    if (str == " M earth_enterprise/src/version.txt\n"):
-        return False
-    
-    return (len(str) > 0)
-    
+def gcno_emitter( target, source, env, parent_emitter ):
+  new_target, new_source = parent_emitter(target, source, env)
+  for file in new_target:
+    base,ext = SCons.Util.splitext( str( file ) )
+    if ext == '.o' or ext == '.os': # I can't image the extions would be anythings else but...
+      new_target.append( base+'.gcno' )
+  return new_target, new_source
 
-def ReadBackupVersionFile(target):
-  """There should be a file checked in with the latest version
-     information available; if git isn't available to provide
-     information, then use this file instead."""
-
-  with open(target, 'r') as fp:
-    line = fp.readline()
-
-  return line
-
-def GitGeneratedLongVersion():
-    """Take the raw information parsed by git, and use it to
-       generate an appropriate version string for GEE."""
-
-    repo = GetRepository()
-    raw = repo.git.describe('--tags', '--match', '[0-9]*\.[0-9]*\.[0-9]*\-*')
-    raw = raw.rstrip()
-
-    # Grab the datestamp.
-    date = datetime.utcnow().strftime("%Y%m%d%H%M")
-
-    # If this condition hits, then we are currently on a tagged commit.
-    if (len(raw.split("-")) < 4):
-        if CheckDirtyRepository():
-            return '.'.join([raw, date])
-        return raw
-
-    # Tear apart the information in the version string.
-    components = ParseRawVersionString(raw)
-  
-    # Determine how to update, since we are *not* on tagged commit.
-    if components['isFinal']:
-        components['patch'] = 0
-        components['patchType'] = "alpha"
-        components['revision'] = components['revision'] + 1
-    else:
-        components['patch'] = components['patch'] + 1
-    
-    # Rebuild.
-    base = '.'.join([str(components[x]) for x in ("major", "minor", "revision")])
-    patch = '.'.join([str(components["patch"]), components["patchType"], date])
-    if not CheckDirtyRepository():
-        patch = '.'.join([patch, components['hash']])
-    
-    return '-'.join([base, patch])
-
-
-def ParseRawVersionString(raw):
-    """Break apart a raw version string into its various components,
-    and return those entries via a dictionary."""
-
-    components = { }    
-    rawComponents = raw.split("-")
-    
-    base = rawComponents[0]
-    patchRaw = rawComponents[1]
-    components['numCommits'] = rawComponents[2]
-    components['hash'] = rawComponents[3]
-    components['isFinal'] = ((patchRaw[-5:] == "final") or
-                             (patchRaw[-7:] == "release"))
-  
-    baseComponents = base.split(".")
-    components['major'] = int(baseComponents[0])
-    components['minor'] = int(baseComponents[1])
-    components['revision'] = int(baseComponents[2])
-  
-    patchComponents = patchRaw.split(".")
-    components['patch'] = int(patchComponents[0])
-    if (len(patchComponents) < 2):
-        components['patchType'] = "alpha"
-    else:
-        components['patchType'] = patchComponents[1]
-        
-    return components
-  
+def gcno_remover_emitter( target, source, env ):
+  new_target = target
+  new_source = []
+  # remove any .gcno files that get added because of
+  # object emitters
+  for file in source:
+    base,ext = SCons.Util.splitext( str( file ) )
+    base = base
+    if str( ext ) != '.gcno':
+      #print "gcno_remover_emitter keeping {0}; ext == {1}".format( str( file ), str( ext ) )
+      new_source.append(file)
+    #else:
+      #print "gcno_remover_emitter removing {0}; ext == {1}".format( str( file ), str( ext ) )
+  return new_target, new_source
 
 # our derived class
 class khEnvironment(Environment):
@@ -403,6 +288,10 @@ class khEnvironment(Environment):
       toolpath = []
     args = (self, platform, tools, toolpath, options)
     Environment.__init__(*args, **kw)
+
+    if 'coverage' in kw and kw['coverage']:
+      self.SetupCoverageTargets()
+
     self.exportdirs = exportdirs
     self.installdirs = installdirs
     self['BUILDERS']['uic'] = uic
@@ -417,10 +306,84 @@ class khEnvironment(Environment):
 
     DefineProtocolBufferBuilder(self)
 
-  def bash_escape(self, value):
+  @staticmethod
+  def bash_escape(value):
     """Escapes a given value as a BASH string."""
 
     return "'{0}'".format(value.replace("'", "'\\''"))
+
+  def SetupCoverageTargets(self):
+    """Properly adds .gcno files as targets for c files when coverage is enabled
+    This is needed so scons knows about these files and can act on them propely
+    for clean and cache activities"""
+
+    static_obj, shared_obj = SCons.Tool.createObjBuilders( self )
+    SCons.Tool.createSharedLibBuilder( self )
+    SCons.Tool.createStaticLibBuilder( self )
+    SCons.Tool.createProgBuilder( self )
+
+    def gcno_shared_emitter( target, source, env ):
+      return gcno_emitter( target, source, env, SCons.Defaults.SharedObjectEmitter )
+
+    def gcno_static_emitter( target, source, env ):
+      return gcno_emitter( target, source, env, SCons.Defaults.StaticObjectEmitter )
+
+    # add emitters to c file builder that will add the .gcno file as one of its targets
+    shared_obj.add_emitter( '.c', gcno_shared_emitter )
+    static_obj.add_emitter( '.c', gcno_static_emitter )
+    shared_obj.add_emitter( '.cc', gcno_shared_emitter )
+    static_obj.add_emitter( '.cc', gcno_static_emitter )
+    shared_obj.add_emitter( '.cpp', gcno_shared_emitter )
+    static_obj.add_emitter( '.cpp', gcno_static_emitter )
+
+    # unfortunately the above emitters trigger scons to now also add the .gcno files
+    # as sources to other builders like shared lib, static lib and program builder.
+    # But these builders don't need those files and will actually choke on them...
+    # So the below undoes what scons did and removes the .gcno files from the source
+    # collections of those other builders.  Removing the sources from the other builders
+    # still keeps the targets in place we just added and once that is done this brings
+    # balance back to the force and all is good once again in the universe. 
+    try:    
+      original_shared_lib_emitter = self['SHLIBEMITTER']
+      if type(original_shared_lib_emitter) == list:
+        original_shared_lib_emitter = original_shared_lib_emitter[0]
+    except KeyError:
+      original_shared_lib_emitter = None
+    
+    def gcno_shared_lib_emitter(target, source, env):
+      if original_shared_lib_emitter:
+        target, source = original_shared_lib_emitter(target, source, env)
+      return gcno_remover_emitter(target, source, env)
+
+    self['SHLIBEMITTER'] = gcno_shared_lib_emitter
+    
+    try:
+      original_static_lib_emitter = self['LIBEMITTER']
+      if type(original_static_lib_emitter) == list:
+        original_static_lib_emitter = original_static_lib_emitter[0]
+    except KeyError:
+      original_static_lib_emitter = None
+    
+    def gcno_static_lib_emitter(target, source, env):
+      if original_static_lib_emitter:
+        target, source = original_static_lib_emitter(target, source, env)
+      return gcno_remover_emitter(target, source, env)
+
+    self['LIBEMITTER'] = gcno_static_lib_emitter
+    
+    try:
+      original_prog_emitter = self['PROGEMITTER']
+      if type(original_prog_emitter) == list:
+        original_prog_emitter = original_prog_emitter[0]
+    except KeyError:
+      original_prog_emitter = None
+    
+    def gcno_prog_emitter(target, source, env):
+      if original_prog_emitter:
+        target, source = original_prog_emitter(target, source, env)
+      return gcno_remover_emitter(target, source, env)
+
+    self['PROGEMITTER'] = gcno_prog_emitter
 
   def DeepCopy(self):
     other = self.Clone()
@@ -545,10 +508,24 @@ class khEnvironment(Environment):
     base = os.path.basename(target)
     newtarget = os.path.join(self.exportdirs['bin'], 'tests', base)
     args = (newtarget, source)
-    ret = self.Program(*args, **kw)
+    test_env = self.Clone()
+    test_env['LINKFLAGS'] = test_env['test_linkflags']
+    if test_env['test_extra_cppflags']:
+      # FIXME: The SCons shell escape seems to be broken, and the 'ESCAPE'
+      # environment variable isn't respected for some reason, so we add a
+      # dirty patch:
+      test_env['CPPFLAGS'] += map(
+        lambda s: s.replace('"', '\\"'), test_env['test_extra_cppflags'])
+    ret = test_env.Program(*args, **kw)
 
     self.Default(self.alias(target_src_node, ret))
     return ret
+
+  def testScript(self, target, dest='bin', subdir='tests'):
+    instdir = self.fs.Dir(subdir, self.exportdirs[dest])
+    if not SCons.Util.is_List(target):
+      target = [target]
+    self.Install(instdir, target)
 
   def executableLink(self, dest, target, source, **unused_kw):
     """path to the target in the srcdir (not builddir)."""
@@ -592,6 +569,15 @@ class khEnvironment(Environment):
     if not SCons.Util.is_List(newname):
       newname = [newname]
     self.InstallAs([self.fs.File(i, instdir) for i in newname], src)
+
+  def installRecursive(self, dest_root, source_path):
+    for root_dir, _, files in os.walk(source_path):
+        for file_path in files:
+            self.Install(
+                os.path.join(
+                  dest_root,
+                  os.path.relpath(root_dir, os.path.dirname(source_path))),
+                os.path.join(root_dir, file_path))
 
   def installDirExcluding(self, dest, target_dir, excluded_list, subdir=''):
     instdir = self.fs.Dir(subdir, self.installdirs[dest])
@@ -663,7 +649,7 @@ class khEnvironment(Environment):
     # Re-call all the target  builders to add the sources to each target.
     result = []
     for t in tlist:
-      bld = t.get_builder() or my_alias_builder
+      bld = t.get_builder() if t.has_builder() else my_alias_builder
       result.extend(bld(self, t, source))
     return result
 
@@ -674,6 +660,9 @@ class khEnvironment(Environment):
     root_dir = self.exportdirs['root']
     shobj_suffix = self['SHOBJSUFFIX']
     return [root_dir + p + shobj_suffix for p in sources if p]
+
+  def get_open_gee_version(self):
+    return open_gee_version
 
 
 def ProtocolBufferGenerator(source, target, env, for_signature):

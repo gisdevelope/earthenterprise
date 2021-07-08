@@ -17,8 +17,8 @@
 
 #ifndef KHSRC_FUSION_FUSIONUI_SEARCHTABWIDGET_H__
 #define KHSRC_FUSION_FUSIONUI_SEARCHTABWIDGET_H__
-
-#include <qtabwidget.h>
+#include <Qt/qobjectdefs.h>
+#include <Qt/qtabwidget.h>
 #include <vector>
 #include <autoingest/.idl/storage/SearchTabReference.h>
 
@@ -48,6 +48,7 @@ class SearchTabWidget : public QTabWidget {
   bool is_ge_db_;  // True if we're editing a GE database.
                    // Necessary because of search tab limit of the earth client.
   std::vector<std::string> projects_;
+  unsigned int UnhandledErrorCount;
 };
 
 

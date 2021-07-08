@@ -26,12 +26,17 @@ libgepublish = env.sharedLib('gepublish',
                              LIBS=['curl', 'geutil', 'dbmanifest',
                                    'gecommon'])
 
+env.test('curl_request_unittest',
+         'CurlRequest_unittest.cpp',
+         LIBS=['gepublish', 'curl', 'gtest'])
+
 geserveradmin = env.executable('geserveradmin', 'geserveradmin.cpp',
                            LIBS=['dbmanifest', 'gepublish', 'gemiscconfig',
-                                 'geutil', 'gecommon', 'geautoingest', 'qt-mt',
-                                 'geconfigutil'])
+                                 'geutil', 'gecommon', 'geautoingest', 'QtCore', 'QtGui',
+                                 'geconfigutil', 'xerces-c'])
 
 swig_env = env.DeepCopy()
+swig_env['STATIC_AND_SHARED_OBJECTS_ARE_THE_SAME']=1
 root_dir = Dir(swig_env.exportdirs['root']).abspath
 
 cxx_flags = swig_env['CXXFLAGS']

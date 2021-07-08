@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +22,8 @@
 #include "AssetHandle.h"
 #include <khFileUtils.h>
 #include "MiscConfig.h"
-
+#include "StorageManager.h"
+#include "CacheSizeCalculations.h"
 
 /******************************************************************************
  ***  AssetImpl
@@ -36,35 +38,55 @@
  ***  ... = asset->config.layers.size();
  ***
  ******************************************************************************/
-class AssetImpl : public khRefCounter, public AssetStorage {
+class AssetImpl : public AssetStorage, public StorageManaged {
   friend class AssetHandle_<AssetImpl>;
 
-  // private and unimplemented -- illegal to copy an AssetImpl
-  AssetImpl(const AssetImpl&);
-  AssetImpl& operator=(const AssetImpl&);
+  // Illegal to copy an AssetImpl
+  AssetImpl(const AssetImpl&) = delete;
+  AssetImpl& operator=(const AssetImpl&) = delete;
+  AssetImpl(const AssetImpl&&) = delete;
+  AssetImpl& operator=(const AssetImpl&&) = delete;
+ public:
+  using Base = AssetStorage;
+  static std::string GetPlaceholderAssetRegistryKey() { return "SourceAsset"; }
 
  protected:
-  // implemented in LoadAny.cpp
-  static khRefGuard<AssetImpl> Load(const std::string &boundref);
-
   // used by my intermediate derived classes since their calls to
   // my constructor will never actualy be used
-  AssetImpl(void) : timestamp(0), filesize(0) { }
+  AssetImpl(void) = default;
   AssetImpl(const AssetStorage &storage) :
-      AssetStorage(storage), timestamp(0), filesize(0) { }
+      AssetStorage(storage) { }
 
  public:
-  // use by cache - maintained outside of constructors
-  time_t timestamp;
-  uint64 filesize;
+
+  virtual std::string GetName() const { // Returns the name of the asset, e.g., "CombinedRPAsset"
+    return this->GetRef().toString();
+  }
+
+  // Note for future development: It would be good to change SerializeConfig to something like
+  // GetConfig that would fill out a list of key/value pairs instead of dealing with XML directly
+  virtual void SerializeConfig(khxml::DOMElement*) const {
+    assert(false);
+  }
 
   std::string WorkingDir(void) const { return WorkingDir(GetRef()); }
   std::string XMLFilename() const { return XMLFilename(GetRef()); }
 
 
   virtual ~AssetImpl(void) { }
-  std::string GetRef(void) const { return name; }
+  const SharedString & GetRef(void) const { return name; }
 
+  // determine amount of memory used by an AssetImpl
+  virtual std::uint64_t GetHeapUsage() const {
+    return ::GetHeapUsage(name)
+    + ::GetHeapUsage(type)
+    + ::GetHeapUsage(subtype)
+    + ::GetHeapUsage(inputs)
+    + ::GetHeapUsage(meta)
+    + ::GetHeapUsage(versions)
+    + ::GetHeapUsage(timestamp)
+    + ::GetHeapUsage(filesize);
+  }
 
   std::string  GetLastGoodVersionRef(void) const;
   void GetInputFilenames(std::vector<std::string> &out) const;
@@ -73,6 +95,15 @@ class AssetImpl : public khRefCounter, public AssetStorage {
   // static helpers
   static std::string WorkingDir(const std::string &ref);
   static std::string XMLFilename(const std::string &ref);
+  static std::string Filename(const std::string &ref) {
+    return XMLFilename(ref);
+  }
+  static SharedString Key(const SharedString & ref) {
+    return ref;
+  }
+  static bool ValidRef(const SharedString & ref) {
+    return !ref.empty();
+  }
 };
 
 // ****************************************************************************
@@ -81,63 +112,12 @@ class AssetImpl : public khRefCounter, public AssetStorage {
 typedef AssetHandle_<AssetImpl> Asset;
 
 template <>
-inline khCache<std::string, Asset::HandleType>&
-Asset::cache(void)
+inline StorageManager<AssetImpl>&
+Asset::storageManager(void)
 {
-  static khCache<std::string, Asset::HandleType>
-    instance(MiscConfig::Instance().AssetCacheSize);
-  return instance;
-}
-
-template <>
-inline void
-Asset::DoBind(const std::string &ref, bool checkFileExistenceFirst) const
-{
-  // Check in cache
-  HandleType entry = CacheFind(ref);
-  bool addToCache = false;
-
-  // Try to load from XML
-  if (!entry) {
-    if (checkFileExistenceFirst) {
-      std::string filename = Impl::XMLFilename(ref);
-      if (!khExists(Impl::XMLFilename(ref))) {
-        // in this case DoBind is allowed not to throw even if
-        // we configured to normally throw
-        return;
-      }
-    }
-
-    // will succeed, generate stub, or throw exception
-    entry = Load(ref);
-    addToCache = true;
-  } else if (check_timestamps) {
-    std::string filename = Impl::XMLFilename(ref);
-    uint64 filesize = 0;
-    time_t timestamp = 0;
-    if (khGetFileInfo(filename, filesize, timestamp) &&
-        ((timestamp != entry->timestamp) ||
-         (filesize != entry->filesize))) {
-      // the file has changed on disk
-
-      // drop the current entry from the cache
-      cache().Remove(ref, false); // don't prune, the Add will
-
-      // will succeed, generate stub, or throw exception
-      entry = Load(ref);
-      addToCache = true;
-    }
-  }
-
-  // set my handle
-  handle = entry;
-
-  // add it to the cache
-  if (addToCache)
-    cache().Add(ref, entry);
-
-  // used by derived class to mark dirty
-  OnBind(ref);
+  static StorageManager<AssetImpl> storageManager(
+      MiscConfig::Instance().AssetCacheSize, MiscConfig::Instance().LimitMemoryUtilization, MiscConfig::Instance().MaxAssetCacheMemorySize, MiscConfig::Instance().PrunePercentage, "asset");
+  return storageManager;
 }
 
 template <>
@@ -147,12 +127,12 @@ Asset::Valid(void) const
   if (handle) {
     return handle->type != AssetDefs::Invalid;
   } else {
-    // deal quickly with an empty ref
-    if (ref.empty())
+
+    if (!AssetImpl::ValidRef(ref))
       return false;
 
     try {
-      DoBind(ref, true /* check file & maybe not throw */);
+      DoBind(true /* check file & maybe not throw */, true /* add to cache */);
     } catch (...) {
       return false;
     }
@@ -160,14 +140,8 @@ Asset::Valid(void) const
   }
 }
 
-
-template <>
-inline void
-Asset::Bind(void) const
-{
-  if (!handle) {
-    DoBind(ref, false);
-  }
+inline std::uint64_t GetHeapUsage(const AssetImpl &asset) {
+  return asset.GetHeapUsage();
 }
 
 #endif /* __Asset_h */

@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,16 +14,17 @@
 // limitations under the License.
 
 
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <khTypes.h>
 
 class Systemrc {
   std::string assetroot        = std::string("/gevol/assets");
-  uint        maxjobs          = uint(0); // default of 0 represents "not set"
+  unsigned int        maxjobs          = uint(0); // default of 0 represents "not set"
   bool        locked           = false;
   std::string fusionUsername   = std::string("gefusionuser");
   std::string userGroupname    = std::string("gegroup");
+  unsigned int        logLevel         = uint(2);
 
   deprecated std::string defaultImageryIndex  = std::string();
   deprecated std::string defaultImageryCopyright  = std::string();
@@ -40,7 +42,7 @@ protected:
   bool Load(void) {
     return Load(Filename());
   }
-  friend void LoadSystemrc(Systemrc &systemrc);
+  friend void LoadSystemrc(Systemrc &systemrc, bool override_cache);
 public:
   static std::string Filename(void);
   bool Save(void) const;
@@ -114,7 +116,7 @@ public:
     // verify that assetroot is an absolute path
     if (!assetroot.length() || assetroot[0] != '/') {
       throw khException(kh::tr("Invalid assetroot name: '%1'")
-                        .arg(assetroot));
+                        .arg(assetroot.c_str()));
     }
 
     // we cannot verify that the assetroot actually exists or is properly

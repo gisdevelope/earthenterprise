@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,7 +28,8 @@
 #include "common/khAbortedException.h"
 #include "common/khGetopt.h"
 #include "common/khSimpleException.h"
-#include "common/khTypes.h"
+//#include "common/khTypes.h"
+#include <cstdint>
 #include "fusion/portableglobe/portablemapbuilder.h"
 
 void usage(const std::string &progn, const char *msg = 0, ...) {
@@ -73,7 +75,9 @@ void usage(const std::string &progn, const char *msg = 0, ...) {
           "                    packets, even if main imagery layer has no\n"
           "                    more data.\n"
           "   --no_write:      Do not write packets, just give print out\n"
-          "                    the total size of the map.\n",
+          "                    the total size of the map.\n"
+          "   --metadata_file: Name of file that will store boundary metadata.\n"
+          "                    Default is no file.\n",
           progn.c_str());
   exit(1);
 }
@@ -90,10 +94,12 @@ int main(int argc, char **argv) {
     std::string source;
     std::string hires_qt_nodes_file;
     std::string map_directory;
+    std::string metadata_file;
+
     // Default indicates Cutter context.
     std::string additional_args = "&ct=c";
-    uint32 default_level = 7;
-    uint32 max_level = 24;
+    std::uint32_t default_level = 7;
+    std::uint32_t max_level = 24;
 
     khGetopt options;
     options.flagOpt("help", help);
@@ -106,6 +112,8 @@ int main(int argc, char **argv) {
     options.opt("max_level", max_level);
     options.opt("hires_qt_nodes_file", hires_qt_nodes_file);
     options.opt("additional_args", additional_args);
+    options.opt("metadata_file", metadata_file);
+
     options.setRequired("source", "map_directory");
 
     if (!options.processAll(argc, argv, argn)
@@ -122,6 +130,7 @@ int main(int argc, char **argv) {
                     hires_qt_nodes_file,
                     map_directory,
                     additional_args,
+                    metadata_file,
                     ignore_imagery_depth,
                     no_write);
 

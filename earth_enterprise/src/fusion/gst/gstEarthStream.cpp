@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +19,7 @@
 #include <sstream>
 #include <khMTTypes.h>
 #include <kbf.h>
-
+#include <Qt/q3cstring.h>
 #include <khRefCounter.h>
 #include <khCache.h>
 #include <khException.h>
@@ -125,6 +126,11 @@ class ImageExistanceImpl : public khRefCounter {
   void SetVersion(const std::string& blist, int ver) {
     // SetVersion is only called with a relative blist (4 chars or less)
     versions_[NameToIndex(blist)] = ver;
+  }
+
+  // determine amount of memory used by ImageExistanceImpl
+  std::uint64_t GetSize() {
+    return sizeof(versions_);
   }
 
   static std::string PacketName(const std::string& blist);
@@ -321,7 +327,9 @@ void Request::WriteData(void* buffer, size_t size) {
     return;
 
   size_t prev_size = stream_.size();
-  if (!stream_.resize(prev_size + size))
+  stream_.resize(prev_size + size);
+  size_t new_size = stream_.size();
+  if (new_size == 0 || new_size == prev_size)
     return;
 
   memcpy(stream_.data() + prev_size, buffer, size);
@@ -341,8 +349,8 @@ void ImageRequest::Init() {
   // decrypt the buffer
   etEncoder::DecodeWithDefaultKey(GetBuffer(), GetBufferSize());
   // validate the jpeg header
-  const uchar jfifhdrA[] = { 0xff, 0xd8, 0xff, 0xe0 };
-  const uchar jfifhdrB[] = { 'J', 'F', 'I', 'F' };
+  const unsigned char jfifhdrA[] = { 0xff, 0xd8, 0xff, 0xe0 };
+  const unsigned char jfifhdrB[] = { 'J', 'F', 'I', 'F' };
   if (GetBufferSize()<10 ||
       memcmp(jfifhdrA, GetBuffer(), 4) != 0 ||
       memcmp(jfifhdrB, GetBuffer() + 6, 4) != 0) {
@@ -460,7 +468,7 @@ gstEarthStream::gstEarthStream(const std::string& server)
     DbRootRequest request(image_request_handle_, url);
     request.Start();
     if (!request.GetStatus()) {
-      throw khException(kh::tr("Unable to open HTTP database: %1").arg(server));
+      throw khException(kh::tr("Unable to open HTTP database: %1").arg(server.c_str()));
     }
   }
 }
@@ -488,7 +496,7 @@ bool gstEarthStream::GetImage(const gstQuadAddress& addr, char* buffer) {
 ImageVersion gstEarthStream::GetImageVersion(const gstQuadAddress& addr) {
   std::string blist = addr.BlistAsString();
   static khCache<std::string, ImageExistanceHandle>
-    image_existance_cache(kImageExistanceCacheSize);
+    image_existance_cache(kImageExistanceCacheSize, "image existence cache");
   ImageExistanceHandle image_existance;
   if (!image_existance_cache.Find(ImageExistanceImpl::PacketName(blist),
                                    image_existance)) {
@@ -527,7 +535,7 @@ bool gstEarthStream::GetQuadTreeFormat2Packet(
 
 bool gstEarthStream::GetRawImagePacket(
     const QuadtreePath &qt_path,
-    const uint16 version,
+    const std::uint16_t version,
     const keyhole::JpegCommentDate& jpeg_date,
     std::string *raw_packet) {
   assert(raw_packet);
@@ -546,7 +554,7 @@ bool gstEarthStream::GetRawImagePacket(
 
 bool gstEarthStream::GetRawTerrainPacket(
     const QuadtreePath &qt_path,
-    const uint16 version,
+    const std::uint16_t version,
     std::string *raw_packet) {
   assert(raw_packet);
   std::ostringstream url;
@@ -556,8 +564,8 @@ bool gstEarthStream::GetRawTerrainPacket(
 
 bool gstEarthStream::GetRawVectorPacket(
     const QuadtreePath &qt_path,
-    const uint16 channel,
-    const uint16 version,
+    const std::uint16_t channel,
+    const std::uint16_t version,
     std::string *raw_packet) {
   assert(raw_packet);
   std::ostringstream url;

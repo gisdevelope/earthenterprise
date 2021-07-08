@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +19,10 @@
 #ifndef _featureEditor_h_
 #define _featureEditor_h_
 
-#include <qdockwindow.h>
-#include <qlistview.h>
-
+#include <Qt/q3dockwindow.h>
+using QDockWindow = Q3DockWindow;
+#include <Qt/qlistview.h>
+#include <Qt/q3listview.h>
 #include <khGuard.h>
 #include <gstVertex.h>
 #include <gstGeode.h>
@@ -36,6 +38,8 @@ class gstDrawState;
 class QDropEvent;
 class gstSource;
 class FeatureEditor;
+using QListViewItem = Q3ListViewItem;
+using QCheckListItem = Q3CheckListItem;
 
 // ----------------------------------------------------------------------------
 
@@ -45,7 +49,7 @@ QString PrimTypeToString(int type);
 
 class FeatureItem : public QCheckListItem {
  public:
-  FeatureItem(QListView* parent, int id, gstGeodeHandle g, gstRecordHandle a);
+  FeatureItem(Q3ListView* parent, int id, gstGeodeHandle g, gstRecordHandle a);
   ~FeatureItem();
 
   virtual int compare(QListViewItem* item, int, bool) const;
@@ -133,10 +137,10 @@ class FeatureEditor : public FeatureEditorBase {
 
  protected slots:
   void DrawFeatures(const gstDrawState& s);
-  void MousePress(const gstBBox& b, Qt::ButtonState s);
+  void MousePress(const gstBBox& b, Qt::KeyboardModifier s);
   void MouseMove(const gstVertex& v);
   void MouseRelease();
-  void SelectBox(const gstDrawState& state, Qt::ButtonState btn_state);
+  void SelectBox(const gstDrawState& state, Qt::KeyboardModifier btn_state);
   void KeyPress(QKeyEvent* e);
   
   // file menu
@@ -188,8 +192,8 @@ class FeatureEditor : public FeatureEditorBase {
   bool editing_vertex_;
   FeatureItem* current_feature_item_;
   gstGeodeHandle current_geode_;
-  uint current_geode_subpart_;
-  uint current_geode_vertex_;
+  unsigned int current_geode_subpart_;
+  unsigned int current_geode_vertex_;
   gstVertex modified_vertex_;
 
   gstGeodeHandle geode_copy_buffer_;

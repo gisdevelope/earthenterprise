@@ -1,6 +1,7 @@
 #!/usr/bin/perl -w-
 #
 # Copyright 2017 Google Inc.
+# Copyright 2020 The Open GEE Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +25,7 @@ use AssetGen;
 
 my $help = 0;
 our $thiscommand = "@ARGV";
+
 
 sub usage() {
     die "usage: $FindBin::Script <.srcfile> <outputfile>\n";
@@ -54,13 +56,14 @@ my $haspostupdate = $config{"${name}AssetImplD"} =~ /PostUpdate\(void\)/;
 
 my ($template);
 $template = "";
+my $templateName="ProductAssetVersion";
 if ($base eq 'Composite') {
     if ($singleFormalExtraUpdateArg) {
-      $template = "template <typename ProductAssetVersion>";
+      $template = "template <typename $templateName>";
       $singleFormalExtraUpdateArg =~
-        s/ExtraUpdateArg/ExtraUpdateArg\<ProductAssetVersion\>/;
+        s/ExtraUpdateArg/ExtraUpdateArg\<$templateName\>/;
       $formalExtraUpdateArg =~
-        s/ExtraUpdateArg/ExtraUpdateArg\<ProductAssetVersion\>/;
+        s/ExtraUpdateArg/ExtraUpdateArg\<$templateName\>/;
     }
 }
 
@@ -82,7 +85,10 @@ print $fh <<EOF;
 #include <khGuard.h>
 #include <khxml/khdom.h>
 #include <AssetThrowPolicy.h>
+#include "AssetOperation.h"
+#include <fusion/autoingest/AssetFactory.h>
 using namespace khxml;
+using namespace AssetFactory;
 EOF
 
 if ($base eq 'Leaf') {
@@ -98,61 +104,12 @@ print $fh <<EOF;
 // ****************************************************************************
 $config{"AssetD.cpp"}
 
+const AssetDefs::Type ${name}Type::TYPE = $typeorinvalid;
+const std::string ${name}Type::SUBTYPE = "$subtype";
 
 // ****************************************************************************
 // ***  ${name}Factory - Auto generated
 // ****************************************************************************
-${name}AssetD
-${name}Factory::Find(const std::string &ref_ $formaltypearg)
-{
-    try {
-        Asset asset(ref_);
-        if (asset &&
-            (asset->type == $typeref) &&
-            (asset->subtype == "$subtype")) {
-            return ${name}AssetD(ref_);
-        }
-    } catch (...) {
-        // do nothing - don't even generate any warnings
-    }
-    return ${name}AssetD();
-}
-
-${name}AssetVersionD
-${name}Factory::FindVersion(const std::string &ref_ $formaltypearg)
-{
-    try {
-        AssetVersion version(ref_);
-        if (version &&
-            (version->type == $typeref) &&
-            (version->subtype == "$subtype")) {
-            return ${name}AssetVersionD(ref_);
-        }
-    } catch (...) {
-        // do nothing - don't even generate any warnings
-    }
-    return ${name}AssetVersionD();
-}
-
-void
-${name}Factory::ValidateRefForInput(const std::string &ref $formaltypearg)
-{
-    if (AssetVersionRef(ref).Version() == "current") {
-        Asset asset = Find(ref $forwardtypearg);
-        if (!asset) {
-            throw std::invalid_argument(
-                "No such " + ToString($typeref) + " $subtype asset: " + ref);
-        }
-    } else {
-        ${name}AssetVersionD version = FindVersion(ref $forwardtypearg);
-        if (!version) {
-            throw std::invalid_argument(
-                "No such " + ToString($typeref) + " $subtype asset version: " +
-                ref);
-        }
-    }
-}
-
 std::string
 ${name}Factory::SubAssetName(
         const std::string &parentAssetRef
@@ -163,213 +120,7 @@ ${name}Factory::SubAssetName(
                                    $actualtypearg, "$subtype");
 }
 
-
-Mutable${name}AssetD
-${name}Factory::Make(const std::string &ref_ $formaltypearg,
-                     $formalinputarg
-                     const khMetaData &meta_,
-                     const $config& config_)
-{
-    typedef ${name}AssetImplD Impl;
-
-    // all of this wrapping is required and makes it nearly impossible
-    // to misuse the Handle and khRefGuard class
-    return Mutable${name}AssetD
-             (khRefGuardFromNew(new Impl
-                (AssetStorage::MakeStorage(ref_, $actualtypearg,
-                                           "$subtype",$actualinputarg,
-                                           meta_),
-                 config_)));
-}
-
-Mutable${name}AssetD
-${name}Factory::FindMake(const std::string &ref_ $formaltypearg,
-                         $formalinputarg
-                         const khMetaData &meta_,
-                         const $config& config_)
-{
-    // keep hold of it as a mutable so we can change/create it and
-    // have the changes automatically saved
-    Mutable${name}AssetD asset = Find(ref_ $forwardtypearg);
-    if (asset) {
-        asset->Modify($forwardinputarg meta_, config_);
-        return asset;
-    } else {
-        return Make(ref_ $forwardtypearg,
-                    $forwardinputarg
-                    meta_, config_);
-    }
-}
-
-
-Mutable${name}AssetD
-${name}Factory::FindAndModify(const std::string &ref_ $formaltypearg,
-                              $formalinputarg
-                              const khMetaData &meta_,
-                              const $config& config_)
-{
-    Mutable${name}AssetD asset = Find(ref_ $forwardtypearg);
-    if (asset) {
-        asset->Modify($forwardinputarg meta_, config_);
-        return asset;
-    } else {
-        throw khException(kh::tr("$subtype '%2' doesn't exist")
-                          .arg(ref_));
-    }
-}
-
-
-Mutable${name}AssetD
-${name}Factory::MakeNew(const std::string &ref_ $formaltypearg,
-                        $formalinputarg
-                        const khMetaData &meta_,
-                        const $config& config_)
-{
-    Mutable${name}AssetD asset = Find(ref_ $forwardtypearg);
-    if (asset) {
-        throw khException(kh::tr("$subtype '%2' already exists")
-                          .arg(ref_));
-    } else {
-        return Make(ref_ $forwardtypearg,
-                    $forwardinputarg
-                    meta_, config_);
-    }
-}
-
-
-$template
-Mutable${name}AssetVersionD
-${name}Factory::FindMakeAndUpdate(
-        const std::string &ref_ $formaltypearg,
-        $formalinputarg
-        const khMetaData &meta_,
-        const $config& config_
-        $formalcachedinputarg
-        $formalExtraUpdateArg)
-{
-    Mutable${name}AssetD asset = FindMake(ref_ $forwardtypearg,
-                                          $forwardinputarg meta_, config_);
-    bool needed = false;
-    return asset->MyUpdate(needed $forwardcachedinputarg
-                           $forwardExtraUpdateArg);
-}
-
-$template
-Mutable${name}AssetVersionD
-${name}Factory::FindMakeAndUpdateSubAsset(
-        const std::string &parentAssetRef
-        $formaltypearg,
-        const std::string &basename,
-        $formalinputarg
-        const khMetaData &meta_,
-        const $config& config_
-        $formalcachedinputarg
-        $formalExtraUpdateArg)
-{
-    return FindMakeAndUpdate
-             (AssetDefs::SubAssetName(parentAssetRef, basename,
-                                      $actualtypearg, "$subtype")
-              $forwardtypearg, $forwardinputarg
-              meta_, config_ $forwardcachedinputarg
-              $forwardExtraUpdateArg);
-}
 EOF
-
-if ($withreuse) {
-    print $fh <<EOF;
-
-$template
-Mutable${name}AssetVersionD
-${name}Factory::ReuseOrMakeAndUpdate(
-        const std::string &ref_ $formaltypearg,
-        $formalinputarg
-        const khMetaData &meta_,
-        const $config& config_
-        $formalcachedinputarg
-        $formalExtraUpdateArg)
-{
-    // make a copy since actualinputarg is macro substituted, so begin() &
-    // end() could be called on different temporary objects
-    std::vector<std::string> inputarg = $actualinputarg;
-    // bind my input versions refs
-    std::vector<std::string> boundInputs;
-    boundInputs.reserve(inputarg.size());
-    std::transform(inputarg.begin(), inputarg.end(), back_inserter(boundInputs),
-                   ptr_fun(&AssetVersionRef::Bind));
-
-    Mutable${name}AssetD asset = Find(ref_ $forwardtypearg);
-    if (asset) {
-	for (AssetStorage::VersionList::const_iterator v
-                = asset->versions.begin();
-             v != asset->versions.end(); ++v) {
-            ${name}AssetVersionD version(*v);
-            // Load an asset version without caching since we may not need it
-            // (offline, obsolete and so on).
-            version.BindNoCache();
-            if ((version->state != AssetDefs::Offline) &&
-                (version->inputs == boundInputs) &&
-                ::IsUpToDate(config_, version->config)) {
-
-#if 0
-                notify(NFY_NOTICE,
-                       "${name}: ReuseOrMakeAndUpdate (reusing %s)",
-                       version->GetRef().c_str());
-                notify(NFY_NOTICE, "         boundinputs:");
-                for (std::vector<std::string>::const_iterator bi =
-                     boundInputs.begin();
-                     bi != boundInputs.end(); ++bi) {
-                    notify(NFY_NOTICE, "             %s", bi->c_str());
-                }
-                notify(NFY_NOTICE, "         version inputs:");
-                for (std::vector<std::string>::const_iterator iv =
-                     version->inputs.begin();
-                     iv != version->inputs.end(); ++iv) {
-                    notify(NFY_NOTICE, "             %s", iv->c_str());
-                }
-#endif
-                // Add the assetversion object to cache.
-                version.CacheAdd();
-
-                return version;
-            } else {
-              // Remove from cache the assetversion object we don't need
-              // (offline, obsolete, and so on).
-              version.CacheRemove();
-            }
-        }
-        asset->Modify($forwardinputarg meta_, config_);
-    } else {
-        asset = Make(ref_ $forwardtypearg,
-                     $forwardinputarg
-                     meta_, config_);
-    }
-    bool needed = false;
-    return asset->MyUpdate(needed $forwardcachedinputarg
-                           $forwardExtraUpdateArg);
-}
-
-$template
-Mutable${name}AssetVersionD
-${name}Factory::ReuseOrMakeAndUpdateSubAsset(
-        const std::string &parentAssetRef
-        $formaltypearg,
-        const std::string &basename,
-        $formalinputarg
-        const khMetaData &meta_,
-        const $config& config_
-        $formalcachedinputarg
-        $formalExtraUpdateArg)
-{
-    return ReuseOrMakeAndUpdate(
-        AssetDefs::SubAssetName(parentAssetRef, basename,
-                                $actualtypearg, "$subtype")
-        $forwardtypearg, $forwardinputarg
-        meta_, config_  $forwardcachedinputarg
-        $forwardExtraUpdateArg);
-}
-EOF
-}
-
 
 print $fh <<EOF;
 // ****************************************************************************
@@ -416,103 +167,24 @@ namespace {
     void AddConfig(DOMElement *parent, const $config &config);
 }
 
-khRefGuard<${name}AssetImplD>
-${name}AssetImplD::Load(const std::string &boundref)
+std::string ${name}AssetImplD::GetName() const
 {
-    khRefGuard<${name}AssetImplD> result;
+    return "${name}Asset";
+}
 
-    // make sure the base class loader actually instantiated one of me
-    // this should always happen, but there are no compile time guarantees
-    result.dyncastassign(${name}AssetImpl::Load(boundref));
-    if (!result) {
-        AssetThrowPolicy::FatalOrThrow(
-            "Internal error: ${name}AssetImplD loaded wrong type for " +
-            boundref);
-    }
+void ${name}AssetImplD::SerializeConfig(DOMElement *top) const
+{
+    AddConfig(top, config);
+}
 
-    return result;
+ std::uint64_t ${name}AssetImplD::GetHeapUsage() const {
+    return ${name}AssetImpl::GetHeapUsage()
+            + ::GetHeapUsage(config);
 }
 
 extern void ToElement(DOMElement *elem, const AssetStorage &self);
 
-bool
-${name}AssetImplD::Save(const std::string &filename) const
-{
-    DOMDocument *doc = CreateEmptyDocument("${name}Asset");
-    if (!doc) {
-        notify(NFY_WARN, "Unable to create empty document: ${name}Asset");
-        return false;
-    }
-    bool status = false;
-    khCallGuard<DOMDocument*,bool> docrelease(&::DestroyDocument, doc);
-    try {
-        DOMElement *top = doc->getDocumentElement();
-        if (top) {
-            // use a temporary else templated ToElement doesn't
-            // know which type to use
-            const AssetStorage &storage = *this;
-            ToElement(top, storage);
-            AddConfig(top, config);
-            status = WriteDocument(doc, filename);
-            if (!status && khExists(filename)) {
-                khUnlink(filename);
-            }
-        } else {
-            notify(NFY_WARN, "Unable to create document element %s",
-                   filename.c_str());
-        }
-    } catch (const XMLException& toCatch) {
-        notify(NFY_WARN, "Error saving %s: %s",
-               filename.c_str(), XMLString::transcode(toCatch.getMessage()));
-    } catch (const DOMException& toCatch) {
-        notify(NFY_WARN, "Error saving %s: %s",
-               filename.c_str(), XMLString::transcode(toCatch.msg));
-    } catch (const std::exception &e) {
-        notify(NFY_WARN, "Error saving %s: %s", filename.c_str(), e.what());
-    } catch (...) {
-        notify(NFY_WARN, "Unable to save %s", filename.c_str());
-    }
-    return status;
-}
-
-
-
 EOF
-
-if ($haveBindConfig) {
-
-    print $fh <<EOF
-Mutable${name}AssetVersionD
-${name}AssetImplD::MakeNewVersion(const ${name}AssetImplD::Config &bound_config)
-{
-    typedef ${name}AssetVersionImplD VerImpl;
-
-    Mutable${name}AssetVersionD newver
-        (khRefGuardFromNew(new VerImpl(this, bound_config)));
-
-    AddVersionRef(newver->GetRef());
-    return newver;
-}
-EOF
-
-} else {
-
-    print $fh <<EOF
-Mutable${name}AssetVersionD
-${name}AssetImplD::MakeNewVersion(void)
-{
-    typedef ${name}AssetVersionImplD VerImpl;
-
-    Mutable${name}AssetVersionD newver(khRefGuardFromNew(new VerImpl(this)));
-
-    AddVersionRef(newver->GetRef());
-    return newver;
-}
-EOF
-
-}
-
-
 
 # ========== BEGIN - IsUpToDate ==========
 {
@@ -633,6 +305,7 @@ EOF
 }
 
 
+
 if ($hasinputs) {
     print $fh <<EOF;
 
@@ -670,7 +343,7 @@ if ($haveBindConfig) {
     if (!IsUpToDate(bound_config, *inputvers)) {
         Mutable${name}AssetD self(GetRef());
         Mutable${name}AssetVersionD newver =
-            self->MakeNewVersion(bound_config);
+            MakeNewVersion<Mutable${name}AssetD, ${name}AssetImplD::Config, Mutable${name}AssetVersionD>(self, bound_config);
         AssetVersionImplD::InputVersionGuard guard(newver.operator->(),
                                                    *inputvers);
 EOF
@@ -679,7 +352,7 @@ EOF
     // now see if I'm up to date
     if (!IsUpToDate(*inputvers)) {
         Mutable${name}AssetD self(GetRef());
-        Mutable${name}AssetVersionD newver = self->MakeNewVersion();
+        Mutable${name}AssetVersionD newver = MakeNewVersion<Mutable${name}AssetD, Mutable${name}AssetVersionD>(self);
         AssetVersionImplD::InputVersionGuard guard(newver.operator->(),
                                                    *inputvers);
 EOF
@@ -708,7 +381,7 @@ print $fh <<EOF;
                                                *inputvers);
     if (curr_ver->state == AssetDefs::Canceled) {
       needed = true;
-      curr_ver->Rebuild();
+      RebuildVersion(curr_ver->GetRef());
     }
 
     return CurrVersionRef();
@@ -736,14 +409,15 @@ if ($haveBindConfig) {
     if (!IsUpToDate(bound_cofig)) {
         Mutable${name}AssetD self(GetRef());
         Mutable${name}AssetVersionD newver =
-            self->MakeNewVersion(bound_config);
+            MakeNewVersion<Mutable${name}AssetD, ${name}AssetImplD::Config, Mutable${name}AssetVersionD>(self, bound_config);
+
 EOF
 }else {
     print $fh <<EOF;
     // now see if I'm up to date
     if (!IsUpToDate()) {
         Mutable${name}AssetD self(GetRef());
-        Mutable${name}AssetVersionD newver = self->MakeNewVersion();
+        Mutable${name}AssetVersionD newver = MakeNewVersion<Mutable${name}AssetD, Mutable${name}AssetVersionD>(self);
 EOF
 }
 
@@ -767,7 +441,7 @@ print $fh <<EOF;
     Mutable${name}AssetVersionD curr_ver(CurrVersionRef());
     if (curr_ver->state == AssetDefs::Canceled) {
       needed = true;
-      curr_ver->Rebuild();
+      RebuildVersion(curr_ver->GetRef());
     }
 
     return CurrVersionRef();
@@ -784,58 +458,22 @@ print $fh <<EOF;
 // ****************************************************************************
 // ***  ${name}AssetVersionImplD - Auto generated
 // ****************************************************************************
-khRefGuard<${name}AssetVersionImplD>
-${name}AssetVersionImplD::Load(const std::string &boundref)
+std::string ${name}AssetVersionImplD::GetName() const
 {
-    khRefGuard<${name}AssetVersionImplD> result;
-
-    // make sure the base class loader actually instantiated one of me
-    // this should always happen, but there are no compile time guarantees
-    result.dyncastassign(${name}AssetVersionImpl::Load(boundref));
-    if (!result) {
-        AssetThrowPolicy::FatalOrThrow(
-            "Internal error: ${name}AssetVersionImplD loaded wrong type for " +
-            boundref);
-    }
-
-    return result;
+    return "${name}AssetVersion";
 }
 
+void ${name}AssetVersionImplD::SerializeConfig(DOMElement *top) const
+{
+    AddConfig(top, config);
+}
+
+ std::uint64_t ${name}AssetVersionImplD::GetHeapUsage() const {
+    return ${name}AssetVersionImpl::GetHeapUsage()
+            + ::GetHeapUsage(config);
+}
 
 extern void ToElement(DOMElement *elem, const AssetVersionStorage &self);
-bool
-${name}AssetVersionImplD::Save(const std::string &filename) const
-{
-    DOMDocument *doc = CreateEmptyDocument("${name}AssetVersion");
-    if (!doc) {
-        notify(NFY_WARN,
-               "Unable to create empty document: ${name}AssetVersion");
-        return false;
-    }
-    bool status = false;
-    khCallGuard<DOMDocument*,bool> docrelease(&::DestroyDocument, doc);
-    try {
-        DOMElement *top = doc->getDocumentElement();
-        if (top) {
-            const AssetVersionStorage &storage = *this;
-            ToElement(top, storage);
-            AddConfig(top, config);
-            status = WriteDocument(doc, filename);
-            if (!status && khExists(filename)) {
-                khUnlink(filename);
-            }
-        } else {
-            notify(NFY_WARN, "Unable to create document element %s",
-                   filename.c_str());
-        }
-    } catch (const std::exception &e) {
-        notify(NFY_WARN, "%s while saving %s", e.what(), filename.c_str());
-    } catch (...) {
-        notify(NFY_WARN, "Unable to save %s", filename.c_str());
-    }
-    return status;
-}
-
 
 EOF
 
@@ -855,7 +493,6 @@ if (@ConfigHistory == 1) {
 }
 print $fh "  }\n";
 print $fh "} // anonymous namespace\n\n";
-
 
 
 close($fh);

@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -81,7 +82,7 @@ class SmartZeroClamper { };
 template <class T>
 class SmartZeroClamper<T, false> {
  public:
-  inline static void Clamp(T *const, uint32) {
+  inline static void Clamp(T *const, std::uint32_t) {
     // nothing to do - unsigned datatype can never be less than zero
   }
 };
@@ -91,7 +92,7 @@ template <class T>
 class SmartZeroClamper<T, true>
 {
  public:
-  inline static void Clamp(T *const dest, uint32 pos) {
+  inline static void Clamp(T *const dest, std::uint32_t pos) {
     if (dest[pos] < 0) dest[pos] = 0;
   }
 };
@@ -130,28 +131,6 @@ ImageInfo::ImageInfo(const std::string &infile,
   // this function would add the filename again.
   srcDS.EnsureKeyholeNormalizedInfo();
 
-  if (srcDS.normalizedTopLevel() > MaxFusionLevel) {
-    double estimatedPixelWidth;
-    double estimatedPixelHeight;
-
-    // TODO: take into account projection type when calculating
-    // estimated pixel width/height.
-    khGDALDatasetImpl::GetReprojectedPixelSizeInDegrees(
-        srcDS.get(), &estimatedPixelWidth, &estimatedPixelHeight);
-    estimatedPixelWidth  = khGeomUtils::DegreesToMeters(estimatedPixelWidth);
-    estimatedPixelHeight = khGeomUtils::DegreesToMeters(estimatedPixelHeight);
-
-    char buff[1024];
-    snprintf(buff, sizeof(buff),
-             "input pixel size with reprojection: (xy) %.4f m, %.4f m.\n"
-             "This tool supports pixel size upto: (xy) %.4f m, %.4f m.\n"
-             "You may down-sample the imagery and retry.\n",
-             estimatedPixelWidth, estimatedPixelHeight,
-             kWidthAtMaxResolution, kWidthAtMaxResolution);
-    // TODO: Add a auto-down-sampling option for handling this case.
-    throw khException(kh::tr(buff));
-  }
-
   // catch any exceptions, prefix the string w/ the filename and rethrow
   try {
     // get the raster bands for use in validation
@@ -159,7 +138,7 @@ ImageInfo::ImageInfo(const std::string &infile,
       throw khException(kh::tr("File has no bands"));
     }
     std::vector<GDALRasterBand*> rasterbands;
-    for (uint i = 0; i < numbands; i++) {
+    for (unsigned int i = 0; i < numbands; i++) {
       rasterbands.push_back(srcDS->GetRasterBand(i+1));
     }
 
@@ -191,7 +170,7 @@ ImageInfo::ImageInfo(const std::string &infile,
       // nothing to do
     } else if (numbands == 4) {
       int num_alpha_bands = 0;
-      for (uint i = 0; i < numbands; ++i) {
+      for (unsigned int i = 0; i < numbands; ++i) {
         if (rasterbands[i]->GetColorInterpretation() == GCI_AlphaBand) {
           ++num_alpha_bands;
         }
@@ -230,10 +209,10 @@ ImageInfo::ImageInfo(const std::string &infile,
     ComputeTileExtents();
 
   } catch (const std::exception &e) {
-    throw khException(kh::tr("%1: %2").arg(infile).arg(e.what()));
+    throw khException(kh::tr("%1: %2").arg(infile.c_str()).arg(e.what()));
   } catch (...) {
     throw khException(kh::tr("%1: Unknown error processing file")
-                      .arg(infile));
+                      .arg(infile.c_str()));
   }
 }
 
@@ -283,26 +262,10 @@ ImageInfo::ImageInfo(const std::string &infile,
 
     // verify input and set values
     if (rasterband->GetColorInterpretation() == GCI_PaletteIndex) {
-#if 1
       // Despite the GDAL API, Grey color tables really aren't
       // supported in GDAL right now.
       throw khException
         (kh::tr("Color tables not supported for heightmaps"));
-#else
-      GDALColorTable *ctbl = rasterband->GetColorTable();
-      if (!ctbl) {
-        throw khException
-          (kh::tr("Unable to get color table"));
-      }
-      if (ctbl->GetPaletteInterpretation() != GPI_Gray) {
-        throw khException
-          (kh::tr("Only Grayscale color tables supported for heightmaps"));
-      }
-      // palette images need NearestNeighbor sampling because
-      // the pixel values cannot change
-      resampleAlg = GRA_NearestNeighbour;
-      componentType = khTypes::Int16;
-#endif
     } else if (rasterband->GetRasterDataType() == GDT_Byte) {
       if ((scale == 1.0) && !mustResample) {
         notify(NFY_WARN,
@@ -347,10 +310,10 @@ ImageInfo::ImageInfo(const std::string &infile,
     ComputeTileExtents();
 
   } catch (const std::exception &e) {
-    throw khException(kh::tr("%1: %2").arg(infile).arg(e.what()));
+    throw khException(kh::tr("%1: %2").arg(infile.c_str()).arg(e.what()));
   } catch (...) {
     throw khException(kh::tr("%1: Unknown error processing file")
-                      .arg(infile));
+                      .arg(infile.c_str()));
   }
 }
 
@@ -437,10 +400,10 @@ ImageInfo::ImageInfo(const std::string &maskfile,
     ComputeTileExtents();
 
   } catch (const std::exception &e) {
-    throw khException(kh::tr("%1: %2").arg(maskfile).arg(e.what()));
+    throw khException(kh::tr("%1: %2").arg(maskfile.c_str()).arg(e.what()));
   } catch (...) {
     throw khException(kh::tr("%1: Unknown error processing file")
-                      .arg(maskfile));
+                      .arg(maskfile.c_str()));
   }
 }
 
@@ -515,7 +478,7 @@ class ImageReader
   // datatype conversion, band replication, etc.
   // Will throw exception if unable to complete read
   template <class TileType>
-  void ReadTile(uint32 row, uint32 col, TileType &tile);
+  void ReadTile(std::uint32_t row, std::uint32_t col, TileType &tile);
 };
 
 
@@ -523,7 +486,7 @@ template <class T>
 khExtents<T>
 InvertRows(const khExtents<T> &sub, const khExtents<T> &all)
 {
-  return khExtents<uint32>(RowColOrder,
+  return khExtents<std::uint32_t>(RowColOrder,
                            all.endRow() - sub.endRow(),
                            all.endRow() - sub.beginRow(),
                            sub.beginCol(),
@@ -536,7 +499,7 @@ InvertRows(const khExtents<T> &sub, const khExtents<T> &all)
 // Will throw exception if unable to complete read
 template <class TileType>
 void
-ImageReader::ReadTile(uint32 row, uint32 col, TileType &tile)
+ImageReader::ReadTile(std::uint32_t row, std::uint32_t col, TileType &tile)
 {
   if (!imageInfo.tileExtents.ContainsRowCol(row, col)) {
     throw khException
@@ -545,9 +508,9 @@ ImageReader::ReadTile(uint32 row, uint32 col, TileType &tile)
   }
 
   // pixel extents for this tile
-  khExtents<int64> myTilePixelExtents
+  khExtents<std::int64_t> myTilePixelExtents
     (TileExtentsToPixelExtents
-     (khExtents<uint32>(RowColOrder, row, row + 1, col, col + 1),
+     (khExtents<std::uint32_t>(RowColOrder, row, row + 1, col, col + 1),
       RasterProductTilespaceBase.tileSize));
   notify(NFY_VERBOSE,
          "myTilePixelExtents = (nsew) %lld,%lld,%lld,%lld (wh) %lld,%lld",
@@ -559,8 +522,8 @@ ImageReader::ReadTile(uint32 row, uint32 col, TileType &tile)
          static_cast<long long>(myTilePixelExtents.height()));
 
   // pixels extents to be read
-  khExtents<int64>
-    myReadPixelExtents(khExtents<int64>::Intersection
+  khExtents<std::int64_t>
+    myReadPixelExtents(khExtents<std::int64_t>::Intersection
                        (imageInfo.croppedPixelExtents(),
                         myTilePixelExtents));
   notify(NFY_VERBOSE,
@@ -581,11 +544,11 @@ ImageReader::ReadTile(uint32 row, uint32 col, TileType &tile)
     return;
   }
 
-  khSize<uint32> readSize(myReadPixelExtents.width(),
+  khSize<std::uint32_t> readSize(myReadPixelExtents.width(),
                           myReadPixelExtents.height());
 
   // pixel offset where the pixels should go in this tile
-  khOffset<uint32>
+  khOffset<std::uint32_t>
     tilePixelOffset(RowColOrder,
                     myReadPixelExtents.beginRow() %
                     RasterProductTilespaceBase.tileSize,
@@ -593,7 +556,7 @@ ImageReader::ReadTile(uint32 row, uint32 col, TileType &tile)
                     RasterProductTilespaceBase.tileSize);
 
   // pixel offset where src pixels should be fetched
-  khOffset<uint32>
+  khOffset<std::uint32_t>
     srcPixelOrigin(RowColOrder,
                    myReadPixelExtents.beginRow()  -
                    imageInfo.alignedPixelExtents().beginRow(),
@@ -602,10 +565,10 @@ ImageReader::ReadTile(uint32 row, uint32 col, TileType &tile)
 
   // pixel extents (src pixel space) to be read
   bool topToBottom = imageInfo.srcDS.alignedGeoExtents().topToBottom();
-  khExtents<uint32> srcReadPixelExtents(srcPixelOrigin,
+  khExtents<std::uint32_t> srcReadPixelExtents(srcPixelOrigin,
                                         readSize);
   if (topToBottom) {
-    khExtents<uint32> srcExtents(RowColOrder,
+    khExtents<std::uint32_t> srcExtents(RowColOrder,
                                  0,
                                  imageInfo.alignedPixelExtents().height(),
                                  0,
@@ -657,7 +620,7 @@ class LevelGeneratorBase
       prodLevel(pl) {
   }
 
-  virtual const TileType& MakeTile(uint32 row, uint32 col) = 0;
+  virtual const TileType& MakeTile(std::uint32_t row, std::uint32_t col) = 0;
 };
 
 template <class TileType>
@@ -670,7 +633,7 @@ class SrcLevelGenerator : public LevelGeneratorBase<TileType>
       : LevelGeneratorBase<TileType>(pl, prog, imageInfo_),
         reader(imageInfo_) { }
 
-  virtual const TileType& MakeTile(uint32 row, uint32 col) {
+  virtual const TileType& MakeTile(std::uint32_t row, std::uint32_t col) {
     if (!this->prodLevel.tileExtents().ContainsRowCol(row, col)) {
       throw khException
         (kh::tr
@@ -688,7 +651,7 @@ class SrcLevelGenerator : public LevelGeneratorBase<TileType>
       if (this->imageInfo.scale != 1.0) {
         assert(!std::numeric_limits<typename TileType::PixelType>
                ::is_integer);
-        for (uint i = 0; i < TileType::BandPixelCount; ++i) {
+        for (unsigned int i = 0; i < TileType::BandPixelCount; ++i) {
           // scale the pixel
           this->tile.bufs[0][i] = static_cast<typename TileType::PixelType>(
               this->tile.bufs[0][i] * this->imageInfo.scale);
@@ -696,7 +659,7 @@ class SrcLevelGenerator : public LevelGeneratorBase<TileType>
       }
       if (this->imageInfo.clampNonnegative &&
           std::numeric_limits<typename TileType::PixelType>::is_signed) {
-        for (uint i = 0; i < TileType::BandPixelCount; ++i) {
+        for (unsigned int i = 0; i < TileType::BandPixelCount; ++i) {
           ZeroClamper<typename TileType::PixelType>
             ::Clamp(this->tile.bufs[0], i);
         }
@@ -735,9 +698,7 @@ class MinifiedLevelGenerator : public LevelGeneratorBase<TileType>
       : LevelGeneratorBase<TileType>(pl, prog, imageInfo_), src(s),
         averager(averager_) { }
 
-  virtual const TileType& MakeTile(uint32 row, uint32 col) {
-    typedef typename TileType::PixelType PixelType;
-
+  virtual const TileType& MakeTile(std::uint32_t row, std::uint32_t col) {
     if (!this->prodLevel.tileExtents().ContainsRowCol(row, col)) {
       throw khException
         (kh::tr
@@ -746,10 +707,10 @@ class MinifiedLevelGenerator : public LevelGeneratorBase<TileType>
     }
 
     // for each of the four source tiles / quadrants
-    for (uint quad = 0; quad < 4; ++quad) {
+    for (unsigned int quad = 0; quad < 4; ++quad) {
       // magnify the dest row/col/quad to get a src row/col
-      uint32 srcRow = 0;
-      uint32 srcCol = 0;
+      std::uint32_t srcRow = 0;
+      std::uint32_t srcCol = 0;
       QuadtreePath::MagnifyQuadAddr(row, col, quad, srcRow, srcCol);
 
       // read high res tile to temporary buffers
@@ -797,7 +758,7 @@ RasterGenerator::RasterGenerator(const ImageInfo &imageInfo,
                                  const std::string &outfile)
     : outRP(0)
 {
-  uint defaultStartLevel =
+  unsigned int defaultStartLevel =
     khRasterProduct::DefaultStartLevel(imageInfo.rasterType);
   if (imageInfo.toplevel() < defaultStartLevel) {
     throw
@@ -812,8 +773,9 @@ RasterGenerator::RasterGenerator(const ImageInfo &imageInfo,
                                imageInfo.toplevel(),
                                imageInfo.degExtents());
   if (!outRP) {
-    throw khException(kh::tr("Unable to create output rasterproduct ") +
-                      outfile);
+    std::string msg { kh::tr("Unable to create output rasterproduct ").toUtf8().constData() };
+    msg += outfile;
+    throw khException(msg.c_str());
   }
 
   notify(NFY_DEBUG, "GLOBAL PIXEL LOD: Upsample = %u",
@@ -831,9 +793,9 @@ RasterGenerator::RasterGenerator(const ImageInfo &imageInfo,
                                  khRasterProduct::RasterType dataRasterType)
     : outRP(0)
 {
-  uint defaultStartLevel =
+  unsigned int defaultStartLevel =
     khRasterProduct::DefaultStartLevel(dataRasterType);
-  uint toplevel = imageInfo.toplevel();
+  unsigned int toplevel = imageInfo.toplevel();
   if (toplevel < defaultStartLevel) {
     // It's OK if alpha's have less resolution, we're expecting to
     // magnify them anyway
@@ -848,8 +810,9 @@ RasterGenerator::RasterGenerator(const ImageInfo &imageInfo,
                                toplevel,
                                imageInfo.degExtents());
   if (!outRP) {
-    throw khException(kh::tr("Unable to create mask output rasterproduct ") +
-                      outfile);
+    std::string msg { kh::tr("Unable to create mask output rasterproduct ").toUtf8().constData() };
+    msg += outfile;
+    throw khException(msg.c_str());
   }
 
   notify(NFY_DEBUG, "GLOBAL PIXEL LOD: Upsample = %u", toplevel);
@@ -881,8 +844,9 @@ RasterGenerator::RasterGenerator(const khRasterProduct *inRP,
        extractCov.meterExtents(RasterProductTilespaceBase) :
        extractCov.degExtents(RasterProductTilespaceBase)));  /* data extents */
   if (!outRP) {
-    throw khException(kh::tr("Unable to create output rasterproduct ") +
-                      outfile);
+    std::string msg { kh::tr("Unable to create output rasterproduct ").toUtf8().constData() };
+    msg+= outfile;
+    throw khException(msg.c_str());
   }
 }
 
@@ -898,10 +862,10 @@ void
 RasterGenerator::MakeLevels(const ImageInfo &imageInfo)
 {
   typedef typename TileType::PixelType PixelType;
-  COMPILE_TIME_ASSERT(TileType::TileWidth == RasterProductTileResolution,
-                      IncompatibleTileWidth);
-  COMPILE_TIME_ASSERT(TileType::TileHeight == RasterProductTileResolution,
-                      IncompatibleTileHeight);
+  static_assert(TileType::TileWidth == RasterProductTileResolution,
+                      "Incompatible Tile Width");
+  static_assert(TileType::TileHeight == RasterProductTileResolution,
+                      "Incompatible Tile Height");
   assert(outRP->numComponents() == TileType::NumComp);
   assert(outRP->componentType() == TileType::Storage);
 
@@ -951,7 +915,7 @@ RasterGenerator::MakeLevels(const ImageInfo &imageInfo)
   }
 
   // make the minified levels
-  // use int instead of uint to avoid wrap at 0 in case of minLevel equals 0.
+  // use int instead of unsigned int to avoid wrap at 0 in case of minLevel equals 0.
   for (int i = static_cast<int>(outRP->maxLevel()) - 1;
        i >= static_cast<int>(outRP->minLevel()); --i) {
     notify(NFY_DEBUG, "Making MinifiedLevel for %d", i);
@@ -963,10 +927,10 @@ RasterGenerator::MakeLevels(const ImageInfo &imageInfo)
 
   // ask the lowest resolution level to make its tiles
   const khRasterProductLevel &minLevel(outRP->level(outRP->minLevel()));
-  khExtents<uint32> tileExtents = minLevel.tileExtents();
-  for (uint32 row = tileExtents.beginRow();
+  khExtents<std::uint32_t> tileExtents = minLevel.tileExtents();
+  for (std::uint32_t row = tileExtents.beginRow();
        row < tileExtents.endRow(); row++) {
-    for (uint32 col = tileExtents.beginCol();
+    for (std::uint32_t col = tileExtents.beginCol();
          col < tileExtents.endCol(); col++) {
       (void) levels.back()->MakeTile(row, col);
     }
@@ -979,10 +943,10 @@ void
 RasterGenerator::Extract(const khRasterProduct *inRP,
                          const khLevelCoverage &extractCov)
 {
-  COMPILE_TIME_ASSERT(TileType::TileWidth == RasterProductTileResolution,
-                      IncompatibleTileWidth);
-  COMPILE_TIME_ASSERT(TileType::TileHeight == RasterProductTileResolution,
-                      IncompatibleTileHeight);
+  static_assert(TileType::TileWidth == RasterProductTileResolution,
+                      "Incompatible Tile Width");
+  static_assert(TileType::TileHeight == RasterProductTileResolution,
+                      "Incompatible Tile Height");
   assert(inRP->numComponents() == TileType::NumComp);
   assert(inRP->numComponents() == outRP->numComponents());
   assert(inRP->componentType() == TileType::Storage);
@@ -1000,9 +964,9 @@ RasterGenerator::Extract(const khRasterProduct *inRP,
   if (! outLevel.OpenWriter(inLevel.IsMonoChromatic()))
     throw khException(kh::tr("Unable to open level %1 for writing")
                       .arg(extractCov.level));
-  for (uint y = extractCov.extents.beginY();
+  for (unsigned int y = extractCov.extents.beginY();
        y < extractCov.extents.endY(); ++y) {
-    for (uint x = extractCov.extents.beginX();
+    for (unsigned int x = extractCov.extents.beginX();
          x < extractCov.extents.endX(); ++x) {
       if (!inLevel.ReadTile(y, x, tile)) {
         throw

@@ -1,6 +1,7 @@
 #!/usr/bin/perl -w-
 #
 # Copyright 2017 Google Inc.
+# Copyright 2020 The Open GEE Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,7 +44,7 @@ sub usage
         "\n"
 }
 
-my %AtomicTypes = (		   
+my %AtomicTypes = (
 		   'bool'      => 1,
 		   'float'     => 1,
 		   'double'    => 1,
@@ -120,6 +121,7 @@ my $cppquote = '';
 my $IDLFILE;
 my $needqt = 0;
 my %ExternalHasDeprecated;
+my %RequiresGetHeapUsage;
 open($IDLFILE, $idlfile) || die "Unable to open $idlfile: $!\n";
 my $line;
 eval {
@@ -143,9 +145,12 @@ eval {
 		$cppquote .= $line . "\n";
 		$line = GetLine($IDLFILE);
 	    }
-        } elsif ($line =~ /^ExternalHasDeprecated:\s*(\w+)/) {
-            $ExternalHasDeprecated{$1} = 1;
-        } else {
+    } elsif ($line =~ /^ExternalHasDeprecated:\s*(\w+)/) {
+        $ExternalHasDeprecated{$1} = 1;
+    } elsif ($line =~ /^\s*\#requiresgetheapusage\s*$/) {
+        $RequiresGetHeapUsage = 1;
+        push @includes, "#include \"CacheSizeCalculations.h\"";
+    } else {
 	    die "Expected class definition found '$line'\n";
 	}
     }
@@ -221,6 +226,7 @@ if (defined $impl_hfile) {
 
 EOH
     # include some basic xml headers
+    print $fh "#include <cstdint>\n";
     print $fh "#include <khxml/khxml.h>\n";
     if ($writeMethod eq 'DOM' || $readMethod eq 'DOM') {
         print $fh "#include <xercesc/dom/DOM.hpp>\n";
@@ -276,7 +282,7 @@ if (defined $cppfile) {
     print $fh "#include \"$impl_hfile\"\n";
     print $fh "\n";
     print $fh "using namespace khxml;\n\n";
-    
+
     if (length($cppquote)) {
         print $fh $cppquote;
         print $fh "\n";
@@ -383,7 +389,7 @@ sub ParseClass
     } else {
         $namespace =~ s/::$//;
     }
-    
+
     die "Expected 'class NAME': found '$line'\n"
 	unless defined($name);
 
@@ -554,7 +560,7 @@ sub ParseClass
                     $loaddefault =~ s/\s+$//;
                 }
 	    }
-	    
+
             {
                 my @exclusive = ('xmlattr', 'xmlbody', 'xmlchild');
                 my $count = 0;
@@ -662,7 +668,7 @@ sub EmitMemberReader
     my ($member, $fh, $prefix, $obj) = @_;
     my $mname  = $member->{name};
     my $mtname = $member->{tagname};
-    
+
     if (defined($member->{loaddefault})) {
         if ($member->{xmlattr}) {
             print $fh $prefix, "GetAttributeOrDefault(elem, \"$mtname\", $obj.$mname, $member->{loaddefault});\n";
@@ -675,7 +681,12 @@ sub EmitMemberReader
         } elsif ($member->{xmlskiptag}) {
             print $fh $prefix, "FromElement(elem, $obj.$mname);\n";
         } else {
-            print $fh $prefix, "GetElementOrDefault(elem, \"$mtname\", $obj.$mname, $member->{loaddefault});\n";
+            my $temp=$member->{loaddefault};
+            if (index($temp, "Qt::") != -1)
+            {
+               $temp = "static_cast<QColor>(".$temp.")";
+            }
+            print $fh $prefix, "GetElementOrDefault(elem, \"$mtname\", $obj.$mname, $temp);\n";
         }
     } else {
         if ($member->{xmlattr}) {
@@ -987,7 +998,7 @@ sub DumpClass
 		    }
 		}
 		print $fh " { }\n";
-	    }    
+	    }
 	}
 
 	if (exists $class->{constructor}) {
@@ -1035,7 +1046,7 @@ sub DumpClass
 		join(', ', @{$class->{base}{constructor}{argnames}}), ")";
 		print $fh ",\n" if $numMembers;
 	    }
-	    
+
 	    for ($i = 0; $i < $numMembers; ++$i) {
 		my $member = $class->{members}[$i];
 		print $fh $pad, $indent, $indent, "$member->{name}($member->{name}_)";
@@ -1044,7 +1055,7 @@ sub DumpClass
 	    print $fh " { }\n";
 	}
     }
-    
+
     # comparison operator
     {
 	print $fh $pad, $indent, "bool operator== (const $class->{name} &o) const\n";
@@ -1145,6 +1156,32 @@ sub DumpClass
       print $fh $pad, $indent, "}\n";
       print $fh $pad, $indent, "void _UpdateIdlVersion(void) const throw() {\n";
       print $fh $pad, $indent, "}\n";
+    }
+
+    # GetHeapUsage
+    if ($RequiresGetHeapUsage) {
+        my $haveFirst = 0;
+        my $curr = 1;
+        my $size = @{$class->{members}};
+        print $fh $pad, $indent, "std::uint64_t GetHeapUsage() const {\n";
+        foreach my $member (@{$class->{members}}) {
+            if ($curr == $size) {
+                if ($haveFirst) {
+                    print $fh $pad, $indent x2, "+ ::GetHeapUsage($member->{name});\n";
+                } else {
+                    print $fh $pad, $indent x2, "return ::GetHeapUsage($member->{name});\n";
+                }
+                last;
+            }
+	        if ($haveFirst) {
+                print $fh $pad, $indent x2, "+ ::GetHeapUsage($member->{name})\n";
+	        } else {
+	    	    print $fh $pad, $indent, $indent, "return ::GetHeapUsage($member->{name})\n";
+	    	    $haveFirst = 1;
+	        }
+            $curr++;
+	    }
+        print $fh $pad, $indent, "}\n";
     }
 
     if ($class->{hquote}) {
@@ -1250,7 +1287,7 @@ sub JavaDumpClass
         if (defined $warn) {
           print $fh $pad, $indent, "\@SuppressWarnings(\"unchecked\")\n";
         }
-        if (defined $member->{newdefault}) { 
+        if (defined $member->{newdefault}) {
           my $default = JavaDefaultVal($member->{newdefault}, $class);
           print $fh $pad, $indent, "public $type $member->{name} = $default;\n";
         } else {
@@ -1279,7 +1316,7 @@ sub JavaDumpClass
 		    }
 		}
 		print $fh $pad, $indent, "}\n\n";
-	    }    
+	    }
 	}
 
 	if (exists $class->{constructor}) {
@@ -1322,7 +1359,7 @@ sub JavaDumpClass
 		join(', ', @{$class->{base}{constructor}{argnames}}), ")";
 		print $fh ",\n" if $numMembers;
 	    }
-	    
+
 	    for ($i = 0; $i < $numMembers; ++$i) {
 		my $member = $class->{members}[$i];
 		print $fh $pad, $indent, $indent, "this.$member->{name} = $member->{name};\n";
@@ -1334,7 +1371,7 @@ sub JavaDumpClass
 
 	}
     }
-    
+
     print $fh $pad, "}\n\n";
 }
 
@@ -1353,6 +1390,11 @@ sub DumpGlobalClassHelpers
     if ($class->{GenerateIsUpToDate}) {
         print $fh "inline bool IsUpToDate(const $class->{qualname} &a, const $class->{qualname} &b) {\n";
         print $fh $indent, "return a.IsUpToDate(b);\n";
+        print $fh "}\n\n";
+    }
+    if ($RequiresGetHeapUsage) {
+        print $fh "inline std::uint64_t GetHeapUsage(const $class->{qualname} &obj) {\n";
+        print $fh $indent, "return obj.GetHeapUsage();\n";
         print $fh "}\n\n";
     }
 }
@@ -1399,7 +1441,7 @@ sub EmitDOMWriter
 
     my $DOM_classname = "$class->{qualname}_DOM";
     $DOM_classname =~ s/::/_/g;
-    
+
 
     print $fh "class $DOM_classname : public $class->{qualname} {\n";
     print $fh $indent, "public:\n";
@@ -1465,7 +1507,7 @@ sub EmitDOMWriter
 		print $fh $indent, "return ";
 		$haveFirst = 1;
 	    }
-	    
+
 	    if (defined($member->{ignoreif})) {
                 print $fh "(($member->{ignoreif}) ||\n";
                 print $fh $indent, "        ::IsUpToDate($member->{name}, o.$member->{name}))";
@@ -1497,7 +1539,7 @@ sub EmitDOMWriter
 	    print $fh $indent, "if (!$class->{base}{qualname}::IsUpToDate(o)) {\n";
             print $fh $indent, "  notify(NFY_WARN, \"$name IsUpToDate: base out of date\");\n";
             print $fh $indent, "  return false;\n";
-            
+
             print $fh $indent, "}\n"
 	}
 
@@ -1555,18 +1597,17 @@ sub EmitDOMWriter
 bool
 $class->{qualname}::Save(const std::string &file) const throw()
 {
-    DOMDocument *doc = CreateEmptyDocument("$class->{TagName}");
+    auto doc = CreateEmptyDocument("$class->{TagName}");
     if (!doc) {
+        notify(NFY_WARN, "Unable to create empty document: $class->{TagName}");
         return false;
-	notify(NFY_WARN, "Unable to create empty document: $class->{TagName}");
     }
     bool status = false;
-    khCallGuard<DOMDocument*,bool> docrelease(&::DestroyDocument, doc);
     try {
         DOMElement *top = doc->getDocumentElement();
         if (top) {
             ToElement(top, *this);
-            status = WriteDocument(doc, file);
+            status = WriteDocument(doc.get(), file);
         } else {
             notify(NFY_WARN, "Unable to create document element %s", file.c_str());
         }
@@ -1594,14 +1635,14 @@ EOF
 bool
 $class->{qualname}::SaveToString(std::string &buf, const std::string &ref) const throw()
 {
-    DOMDocument *doc = CreateEmptyDocument("$class->{TagName}");
+    auto doc = CreateEmptyDocument("$class->{TagName}");
     if (!doc) return false;
     bool status = false;
     try {
         DOMElement *top = doc->getDocumentElement();
         if (top) {
             ToElement(top, *this);
-            status = WriteDocumentToString(doc, buf);
+            status = WriteDocumentToString(doc.get(), buf);
         } else {
             notify(NFY_WARN, "Unable to create document element %s", ref.c_str());
         }
@@ -1610,7 +1651,6 @@ $class->{qualname}::SaveToString(std::string &buf, const std::string &ref) const
     } catch (...) {
         notify(NFY_WARN, "Unknown problem saving %s", ref.c_str());
     }
-    try { doc->release(); } catch (...) { }
     return status;
 }
 
@@ -1719,7 +1759,7 @@ sub EmitDOMReader
 	print $fh "{\n";
     } else {
 	print $fh "void\n";
-	print $fh "FromElement(DOMElement *elem, $class->{qualname} &self)\n";
+  print $fh "FromElement(DOMElement *elem, $class->{qualname} &self)\n";
 	print $fh "{\n";
     }
 
@@ -1769,11 +1809,11 @@ sub EmitDOMReader
 	}
     }
     print $fh "}\n\n";
-    
+
     if (HasDeprecatedMembers($class)) {
 	# little wrapper to avoid all pieces needing to pass depmembers
 	print $fh "void\n";
-	print $fh "FromElement(DOMElement *elem, $class->{qualname} &self) {\n";
+        print $fh "FromElement(DOMElement *elem, $class->{qualname} &self) {\n";
 	print $fh $indent, "$class->{qualname}::DeprecatedMembers depmembers;\n";
 	print $fh $indent, "FromElementWithDeprecated(elem, self, depmembers);\n";
 	print $fh "}\n";
@@ -1801,31 +1841,26 @@ bool
 $class->{qualname}::Load(const std::string &file) throw()
 {
     bool result = false;
-    DOMLSParser *parser = CreateDOMParser();
-    if (parser) {
-	DOMDocument *doc = ReadDocument(parser, file);
-	if (doc) {
-	    try {
-		DOMElement *docelem = doc->getDocumentElement();
-		if (docelem) {
-		    $DECLARE_DEPRECATED
-		    $CALL_FROMELEMENT(docelem, *this$PASS_DEPRECATED);
-		    result = true;
-		} else {
-		    notify(NFY_WARN, "No document element loading %s",
-			   file.c_str());
-		}
-	    } catch (const std::exception &e) {
-		notify(NFY_WARN, "%s while loading %s", e.what(), file.c_str());
-	    } catch (...) {
-		notify(NFY_WARN, "Unable to load %s", file.c_str());
-	    }
-	} else {
-	    notify(NFY_WARN, "Unable to read %s", file.c_str());
-	}
-	DestroyParser(parser);
+    //std::unique_ptr<GEDocument>
+    auto doc = ReadDocument(file);
+    if (doc) {
+        try {
+            DOMElement *docelem = doc->getDocumentElement();
+            if (docelem) {
+                $DECLARE_DEPRECATED
+                $CALL_FROMELEMENT(docelem, *this$PASS_DEPRECATED);
+                result = true;
+            } else {
+                notify(NFY_WARN, "No document element loading %s",
+                       file.c_str());
+            }
+        } catch (const std::exception &e) {
+            notify(NFY_WARN, "%s while loading %s", e.what(), file.c_str());
+        } catch (...) {
+            notify(NFY_WARN, "Unable to load %s", file.c_str());
+        }
     } else {
-	notify(NFY_WARN, "Unable to get parser for %s", file.c_str());
+        notify(NFY_WARN, "Unable to read %s", file.c_str());
     }
     return result;
 }
@@ -1838,34 +1873,29 @@ EOF
 
 bool
 $class->{qualname}::LoadFromString(const std::string &buf,
-			       const std::string &ref) throw()
+    const std::string &ref) throw()
 {
     bool result = false;
-    DOMLSParser *parser = CreateDOMParser();
-    if (parser) {
-	DOMDocument *doc = ReadDocumentFromString(parser, buf, ref);
-	if (doc) {
-	    try {
-		DOMElement *docelem = doc->getDocumentElement();
-		if (docelem) {
-		    $DECLARE_DEPRECATED
-		    $CALL_FROMELEMENT(docelem, *this$PASS_DEPRECATED);
-		    result = true;
-		} else {
-		    notify(NFY_WARN, "No document element loading %s",
-			   ref.c_str());
-		}
-	    } catch (const std::exception &e) {
-		notify(NFY_WARN, "%s while loading %s", e.what(), ref.c_str());
-	    } catch (...) {
-		notify(NFY_WARN, "Unable to load %s", ref.c_str());
-	    }
-	} else {
-	    notify(NFY_WARN, "Unable to read %s", ref.c_str());
-	}
-	DestroyParser(parser);
+    //std::unique_ptr<GEDocument>
+    auto doc = ReadDocumentFromString(buf, ref);
+    if (doc) {
+        try {
+            DOMElement *docelem = doc->getDocumentElement();
+            if (docelem) {
+                $DECLARE_DEPRECATED
+                $CALL_FROMELEMENT(docelem, *this$PASS_DEPRECATED);
+                result = true;
+            } else {
+                notify(NFY_WARN, "No document element loading %s",
+                       ref.c_str());
+            }
+        } catch (const std::exception &e) {
+            notify(NFY_WARN, "%s while loading %s", e.what(), ref.c_str());
+        } catch (...) {
+            notify(NFY_WARN, "Unable to load %s", ref.c_str());
+        }
     } else {
-	notify(NFY_WARN, "Unable to get parser for %s", ref.c_str());
+        notify(NFY_WARN, "Unable to read %s", ref.c_str());
     }
     return result;
 }
@@ -1896,17 +1926,18 @@ sub EmitEnumDOMReader
     print $fh "{\n";
     my $i = 0;
     for ($i = 0; $i < @{$enum->{enumerators}}; ++$i) {
-	my $item = $enum->{enumerators}[$i];
-	if ($i == 0) {
-	    print $fh $indent, "if (enumStr == \"$item->{name}\") {\n";
-	} else {
-	    print $fh $indent, "} else if (enumStr == \"$item->{name}\") {\n";
-	}
-	print $fh $indent, $indent, "self = $enum->{qualbase}::$item->{name};\n";
-	print $fh $indent, $indent, "return;\n";
+      my $item = $enum->{enumerators}[$i];
+      my $conditional = "enumStr == \"$item->{name}\" || enumStr == \"$item->{value}\"";
+      if ($i == 0) {
+        print $fh $indent, "if ($conditional) {\n";
+      } else {
+        print $fh $indent, "} else if ($conditional) {\n";
+      }
+      print $fh $indent, $indent, "self = $enum->{qualbase}::$item->{name};\n";
+      print $fh $indent, $indent, "return;\n";
     }
     print $fh $indent, "}\n";
-    print $fh $indent, "throw khException(kh::tr(\"Invalid string '%1' for enum '%2'\").arg(enumStr).arg(\"$enum->{qualname}\"));\n";
+    print $fh $indent, "throw khException(kh::tr(\"Invalid string '%1' for enum '%2'\").arg(enumStr.c_str()).arg(\"$enum->{qualname}\"));\n";
     print $fh "}\n\n";
 }
 

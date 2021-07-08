@@ -1,6 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/env python2.7
 #
-# Copyright 2017 Google Inc.
+# Copyright 2017 Google Inc, 2019 Open GEE Contributors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ import portable_globe
 import portable_server_base
 import portable_web_interface
 
+
+from platform_specific_functions import prepare_for_io_loop
 
 class FlatFileHandler(portable_server_base.BaseHandler):
   """Class for handling flatfile requests."""
@@ -292,14 +294,18 @@ class QueryHandler(portable_server_base.BaseHandler):
   def get(self):
     """Handle GET request for JSON file for plugin."""
     if self.request.arguments["request"][0] == "Json":
+      if "v" in self.request.arguments:
+        json_version = int(self.request.arguments["v"][0])
+      else:
+        json_version = 1
       self.set_header("Content-Type", "text/plain; charset=utf-8")
       # TODO: Need way to distinguish 2d/3d for
       # TODO: composite with both.
       if ("is2d" in self.request.arguments.keys() and
           self.request.arguments["is2d"][0] == "t"):
-        tornado.web.local_server_.LocalJsonHandler(self, True)
+        tornado.web.local_server_.LocalJsonHandler(self, True, json_version)
       else:
-        tornado.web.local_server_.LocalJsonHandler(self, False)
+        tornado.web.local_server_.LocalJsonHandler(self, False, json_version)
 
     elif self.request.arguments["request"][0] == "ImageryMaps":
       self.set_header("Content-Type", "image/jpeg")
@@ -410,6 +416,8 @@ def main():
       (r"/eb_balloon", BalloonHandler),
       (r"/(.*)", portable_web_interface.SetUpHandler),
       ])
+
+  prepare_for_io_loop()
 
   tornado.web.globe_ = portable_globe.Globe()
   tornado.web.local_server_ = local_server.LocalServer()

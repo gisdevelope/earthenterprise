@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +26,7 @@
 #include <khSpawn.h>
 #include <autoingest/geAssetRoot.h>
 #include "common/performancelogger.h"
+#include "fusion/config/gefConfigUtil.h"
 
 
 
@@ -72,23 +74,33 @@ khSystemManager::SetWantExit(void)
   }
 }
 
+// when SIGHUP is given, reload systemrc
+void systemrc_reload(int signum)
+{
+  notify(NFY_WARN, "Received SIGHUP, Reloading systemrc...");
+  Systemrc systemrc;
+  LoadSystemrc(systemrc,true);
+  std::uint32_t logLevel = systemrc.logLevel;
+  notify(NFY_WARN, "system log level changed to: %s",
+          khNotifyLevelToString(static_cast<khNotifyLevel>(logLevel)).c_str());
+  setNotifyLevel(static_cast<khNotifyLevel>(logLevel));
+}
+
+void handleExitSignals(int signum)
+{
+  notify(NFY_WARN, "Received SIGINT or SIGTERM, Exiting...");
+  theSystemManager.SetWantExit();
+}
+
+
 void
 khSystemManager::SignalLoop(void)
 {
-  sigset_t waitset;
-  sigemptyset(&waitset);
-  sigaddset(&waitset, SIGINT);
-  sigaddset(&waitset, SIGTERM);
-
-
-  int sig;
-  sigwait(&waitset, &sig);
-  if (sig > 0) {
-    notify(NFY_NOTICE, "Received signal %d. Exiting ...", sig);
-    SetWantExit();
-  } else {
-    notify(NFY_NOTICE, "Received signal %d. Ignoring ...", sig);
-  }
+  // This is not a loop.  We're not iterating over any messages.
+  // We just install signal handlers, and return.
+  signal(SIGINT, handleExitSignals);
+  signal(SIGTERM, handleExitSignals);
+  signal(SIGHUP, systemrc_reload);
 }
 
 

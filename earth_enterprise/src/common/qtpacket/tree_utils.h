@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,9 +84,9 @@
 #ifndef COMMON_QTPACKET_TREE_UTILS_H__
 #define COMMON_QTPACKET_TREE_UTILS_H__
 
+#include <cstdint>
 #include <string>
 #include <common/base/macros.h>
-#include <khTypes.h>
 #include <quadtreepath.h>
 
 namespace qtpacket {
@@ -94,6 +95,10 @@ class TreeNumbering {
  public:
   TreeNumbering(int branching_factor, int depth, bool mangle_second_row);
   virtual ~TreeNumbering();
+  TreeNumbering(const TreeNumbering&) = delete;
+  TreeNumbering(TreeNumbering&&) = delete;
+  TreeNumbering& operator=(const TreeNumbering&) = delete;
+  TreeNumbering& operator=(TreeNumbering&&) = delete;
 
   // Return the total number of nodes in the tree
   int num_nodes() const {
@@ -199,8 +204,6 @@ class TreeNumbering {
 
   // Store the number of nodes in the tree at levels <= the given level
   int *nodes_at_levels_;
-
-  DISALLOW_COPY_AND_ASSIGN(TreeNumbering);
 };
 
 }  // namespace qtpacket

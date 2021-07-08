@@ -17,7 +17,6 @@
 #include "fusion/autoingest/Asset.h"
 #include "fusion/autoingest/AssetVersion.h"
 
-
 std::string AssetImpl::GetLastGoodVersionRef(void) const {
   for (VersionList::const_iterator i = versions.begin();
        i != versions.end(); ++i) {
@@ -40,8 +39,7 @@ std::string AssetImpl::XMLFilename(const std::string &ref) {
 
 
 void AssetImpl::GetInputFilenames(std::vector<std::string> &out) const {
-  for (std::vector<std::string>::const_iterator i = inputs.begin();
-       i != inputs.end(); ++i) {
-    AssetVersion(*i)->GetOutputFilenames(out);
+  for (const auto &i : inputs) {
+    AssetVersion(i)->GetOutputFilenames(out);
   }
 }

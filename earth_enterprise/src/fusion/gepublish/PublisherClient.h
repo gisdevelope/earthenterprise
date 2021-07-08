@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -149,8 +150,12 @@ class PublisherClient : public PublishHelper {
   // serverdb.config) to the server and publishes stream data.
   bool PublishDatabase(const std::string& in_db_name,
                        const std::string& in_target_path,
-                       const std::string& vh_name = "", 
-                       const bool default_db = false);
+                       const std::string& vh_name = "",
+                       const bool default_db = false,
+                       const bool poi_search = false,
+                       const bool enhanced_search = false,
+                       const bool serve_wms = false);
+            
 
   // Re-publish database to be served with the existing target path.
   bool RepublishDatabase(const std::string& in_db_name,
@@ -181,7 +186,7 @@ class PublisherClient : public PublishHelper {
                       std::vector<std::string>* searchdef_contents);
 
   bool GarbageCollect(ServerType server_type,
-                      uint32* delete_count, uint64* delete_size);
+                      std::uint32_t* delete_count, std::uint64_t* delete_size);
 
   bool Cleanup(ServerType server_type, std::string *cleaned_portables_data);
 

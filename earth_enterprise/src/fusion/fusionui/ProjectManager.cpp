@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,26 +22,30 @@
 #include <assert.h>
 #include <functional>
 
-#include <qapplication.h>
-#include <qpushbutton.h>
-#include <qcursor.h>
-#include <qpainter.h>
-#include <qpopupmenu.h>
-#include <qprogressdialog.h>
-#include <qmessagebox.h>
-#include <qheader.h>
-#include <qinputdialog.h>
-#include <qthread.h>
-#include <qstringlist.h>
-#include <qevent.h>
-#include <qlayout.h>
-#include <qvgroupbox.h>
-#include <qhgroupbox.h>
-#include <qtooltip.h>
-
+#include <Qt/qapplication.h>
+#include <Qt/qpushbutton.h>
+#include <Qt/qcursor.h>
+#include <Qt/qpainter.h>
+#include <Qt/q3popupmenu.h>
+using QPopupMenu = Q3PopupMenu;
+#include <Qt/qprogressdialog.h>
+#include <Qt/qmessagebox.h>
+#include <Qt/q3header.h>
+#include <Qt/qinputdialog.h>
+#include <Qt/qthread.h>
+#include <Qt/qstringlist.h>
+#include <Qt/qevent.h>
+#include <Qt/qlayout.h>
+#include <Qt/q3vgroupbox.h>
+using QVGroupBox = Q3VGroupBox;
+#include <Qt/q3hgroupbox.h>
+using QHGroupBox = Q3HGroupBox;
+#include <Qt/qtooltip.h>
+#include <Qt/q3mimefactory.h>
+using QMimeSourceFactory = Q3MimeSourceFactory;
+#include <Qt/q3listview.h>
 #include <khConstants.h>
 #include <khGuard.h>
-
 #include <autoingest/Asset.h>
 #include <autoingest/AssetVersion.h>
 #include <autoingest/khAssetManagerProxy.h>
@@ -74,9 +79,12 @@
 #include <fusionui/.idl/layoutpersist.h>
 #include "Preferences.h"
 #include "ValidLayerNames.h"
-
+#include <Qt/q3dragobject.h>
 #include <autoingest/.idl/storage/VectorProjectConfig.h>
 #include <third_party/rfc_uuid/uuid.h>
+
+using QImageDrag = Q3ImageDrag;
+using QScrollView = Q3ScrollView;
 
 namespace {
 const int ConfigDispRuleEventId  = (int)QEvent::User;
@@ -86,21 +94,21 @@ const int RemoveAllLayersEventId = (int)QEvent::User + 2;
 
 class ConfigDispRuleEvent : public QCustomEvent {
  public:
-  ConfigDispRuleEvent(QListViewItem *listItem_, int filterId_)
+  ConfigDispRuleEvent(Q3ListViewItem *listItem_, int filterId_)
       : QCustomEvent(ConfigDispRuleEventId),
         listItem(listItem_), filterId(filterId_) { }
 
-  QListViewItem *listItem;
+  Q3ListViewItem *listItem;
   int filterId;
 };
 
 class RemoveLayerEvent : public QCustomEvent {
  public:
-  RemoveLayerEvent(QListViewItem *listItem_)
+  RemoveLayerEvent(Q3ListViewItem *listItem_)
       : QCustomEvent(RemoveLayerEventId),
         listItem(listItem_) { }
 
-  QListViewItem *listItem;
+  Q3ListViewItem *listItem;
 };
 
 class RemoveAllLayersEvent : public QCustomEvent {
@@ -120,35 +128,35 @@ static QPixmap LoadPixmap(const QString& name) {
 
 // -----------------------------------------------------------------------------
 
-class FilterItem : public QListViewItem {
+class FilterItem : public Q3ListViewItem {
  public:
-  FilterItem(QListViewItem* parent, gstFilter* filter);
+  FilterItem(Q3ListViewItem* parent, gstFilter* filter);
   ~FilterItem();
 
   virtual QString text(int) const;
   virtual int rtti() const { return FILTER; }
-  virtual int compare(QListViewItem* i, int col, bool ascending) const;
+  virtual int compare(Q3ListViewItem* i, int col, bool ascending) const;
 
   int FilterId() const { return filter_id_; }
 
  private:
   gstFilter* GetFilter() const;
-  uint filter_id_;
+  unsigned int filter_id_;
 };
 
 // -----------------------------------------------------------------------------
-
+using QCheckListItem = Q3CheckListItem;
 class LayerItem : public QCheckListItem {
  public:
-  LayerItem(QListView* parent, gstLayer* l);
-  LayerItem(QListViewItem* parent, gstLayer* l);
+  LayerItem(Q3ListView* parent, gstLayer* l);
+  LayerItem(Q3ListViewItem* parent, gstLayer* l);
   ~LayerItem();
 
   virtual int rtti() const { return LAYER; }
   virtual QString text(int n) const;
-  virtual int compare(QListViewItem* i, int col, bool ascending) const;
+  virtual int compare(Q3ListViewItem* i, int col, bool ascending) const;
   virtual void stateChange(bool s);
-  virtual int width(const QFontMetrics& fm, const QListView* lv, int c) const;
+  virtual int width(const QFontMetrics& fm, const Q3ListView* lv, int c) const;
   virtual void paintCell(QPainter* p, const QColorGroup& cg,
                          int col, int width, int align);
 
@@ -167,13 +175,13 @@ class LayerItem : public QCheckListItem {
 
 class LayerGroupItem : public QCheckListItem {
  public:
-  LayerGroupItem(QListView* parent, gstLayer* l);
-  LayerGroupItem(QListViewItem* parent, gstLayer* l);
+  LayerGroupItem(Q3ListView* parent, gstLayer* l);
+  LayerGroupItem(Q3ListViewItem* parent, gstLayer* l);
   ~LayerGroupItem();
 
   virtual int rtti() const { return GROUP; }
   virtual QString text(int col) const;
-  virtual int compare(QListViewItem* i, int col, bool ascending) const;
+  virtual int compare(Q3ListViewItem* i, int col, bool ascending) const;
   virtual void stateChange(bool s);
   virtual void paintCell(QPainter* p, const QColorGroup& cg,
                          int col, int width, int align);
@@ -182,7 +190,7 @@ class LayerGroupItem : public QCheckListItem {
   gstLayer* layer() const { return layer_; }
 
   void update();
-  bool isChildOf(QListViewItem* item);
+  bool isChildOf(Q3ListViewItem* item);
 
  private:
   ProjectManager* myProjectManager() const;
@@ -191,9 +199,9 @@ class LayerGroupItem : public QCheckListItem {
 
 
 
-FilterItem::FilterItem(QListViewItem* parent, gstFilter* filter)
-    : QListViewItem(parent), filter_id_(filter->Id()) {
-  std::vector<uint> fill_rgba, outline_rgba;
+FilterItem::FilterItem(Q3ListViewItem* parent, gstFilter* filter)
+    : Q3ListViewItem(parent), filter_id_(filter->Id()) {
+  std::vector< unsigned int> fill_rgba, outline_rgba;
   fill_rgba.resize(4, 255);
   outline_rgba.resize(4, 255);
 
@@ -238,7 +246,7 @@ QString FilterItem::text(int col) const {
   return display_text;
 }
 
-int FilterItem::compare(QListViewItem* item, int, bool) const {
+int FilterItem::compare(Q3ListViewItem* item, int, bool) const {
   FilterItem* pi = static_cast<FilterItem*>(item);
   return (FilterId() - pi->FilterId());
 }
@@ -248,7 +256,7 @@ int FilterItem::compare(QListViewItem* item, int, bool) const {
 //
 // convenience routine to extract layer from LayerItem and LayerGroupItem
 //
-gstLayer* extractLayer(QListViewItem* item) {
+gstLayer* extractLayer(Q3ListViewItem* item) {
   int rtti = item->rtti();
   if (rtti == FILTER)
     item = item->parent();
@@ -276,13 +284,13 @@ void LayerItem::paintCell(QPainter* p, const QColorGroup& cg,
   QCheckListItem::paintCell(p, cg, col, width, align);
 }
 
-LayerItem::LayerItem(QListView* p, gstLayer* l)
+LayerItem::LayerItem(Q3ListView* p, gstLayer* l)
     : QCheckListItem(p, l->GetShortName(), QCheckListItem::CheckBox),
       layer_(l) {
   update();
 }
 
-LayerItem::LayerItem(QListViewItem* p, gstLayer* l)
+LayerItem::LayerItem(Q3ListViewItem* p, gstLayer* l)
     : QCheckListItem(p, l->GetShortName(), QCheckListItem::CheckBox),
       layer_(l) {
   update();
@@ -295,7 +303,7 @@ void LayerItem::update() {
   QImage img;
   img = thePixmapManager->GetPixmap(gstIcon(layer_->Icon(), layer_->IconType()),
                                     PixmapManager::LayerIcon);
-  setPixmap(0, img);
+  setPixmap(0, QPixmap(img));
 }
 
 ProjectManager* LayerItem::myProjectManager() const {
@@ -318,13 +326,13 @@ QString LayerItem::text(int col) const {
   return QString::null;
 }
 
-int LayerItem::compare(QListViewItem* item, int, bool) const {
+int LayerItem::compare(Q3ListViewItem* item, int, bool) const {
   return layer()->SortId() - extractLayer(item)->SortId();
 }
 
 // make this item parent-less
 void LayerItem::orphan() {
-  QListViewItem* p = parent();
+  Q3ListViewItem* p = parent();
   // reset the sortId
   this->layer_->SetSortId(myProjectManager()->numLayers());
 
@@ -338,11 +346,11 @@ void LayerItem::orphan() {
   }
 }
 
-int LayerItem::width(const QFontMetrics& fm, const QListView* lv, int c) const {
+int LayerItem::width(const QFontMetrics& fm, const Q3ListView* lv, int c) const {
   if (!parent()) {
     return QCheckListItem::width(fm, lv, c);
   } else {
-    return QListViewItem::width(fm, lv, c);
+    return Q3ListViewItem::width(fm, lv, c);
   }
 }
 
@@ -384,7 +392,7 @@ void LayerItem::UpdateFilters() {
   }
 
   if (!layer_->isGroup()) {
-    for (uint kk = 0; kk < layer_->NumFilters(); ++kk) {
+    for (unsigned int kk = 0; kk < layer_->NumFilters(); ++kk) {
       gstFilter* filter = layer_->GetFilterById(kk);
       new FilterItem(this, filter);
     }
@@ -403,7 +411,7 @@ void LayerGroupItem::paintCell(QPainter* p, const QColorGroup& cg,
   QCheckListItem::paintCell(p, cg, col, width, align);
 }
 
-LayerGroupItem::LayerGroupItem(QListView* parent, gstLayer* l)
+LayerGroupItem::LayerGroupItem(Q3ListView* parent, gstLayer* l)
   : QCheckListItem(parent, l->GetShortName(), QCheckListItem::CheckBox),
     layer_(l) {
   setOpen(false);
@@ -412,10 +420,10 @@ LayerGroupItem::LayerGroupItem(QListView* parent, gstLayer* l)
   QImage img;
   img = thePixmapManager->GetPixmap(gstIcon(layer_->Icon(), layer_->IconType()),
                                     PixmapManager::LayerIcon);
-  setPixmap(0, img);
+  setPixmap(0, QPixmap(img));
 }
 
-LayerGroupItem::LayerGroupItem(QListViewItem* parent, gstLayer* l)
+LayerGroupItem::LayerGroupItem(Q3ListViewItem* parent, gstLayer* l)
   : QCheckListItem(parent, l->GetShortName(), QCheckListItem::CheckBox),
     layer_(l) {
   setOpen(false);
@@ -424,7 +432,7 @@ LayerGroupItem::LayerGroupItem(QListViewItem* parent, gstLayer* l)
   QImage img;
   img = thePixmapManager->GetPixmap(gstIcon(layer_->Icon(), layer_->IconType()),
                                     PixmapManager::LayerIcon);
-  setPixmap(0, img);
+  setPixmap(0, QPixmap(img));
 }
 
 LayerGroupItem::~LayerGroupItem() {
@@ -433,7 +441,7 @@ LayerGroupItem::~LayerGroupItem() {
 
 // make this item parent-less
 void LayerGroupItem::orphan() {
-  QListViewItem* p = parent();
+  Q3ListViewItem* p = parent();
   // reset the sortId
   this->layer_->SetSortId(myProjectManager()->numLayers());
 
@@ -451,11 +459,11 @@ void LayerGroupItem::update() {
   QImage img;
   img = thePixmapManager->GetPixmap(gstIcon(layer_->Icon(), layer_->IconType()),
                                     PixmapManager::LayerIcon);
-  setPixmap(0, img);
+  setPixmap(0, QPixmap(img));
 }
 
-bool LayerGroupItem::isChildOf(QListViewItem* item) {
-  QListViewItem* p = parent();
+bool LayerGroupItem::isChildOf(Q3ListViewItem* item) {
+  Q3ListViewItem* p = parent();
   while (p) {
     if (item == p)
       return true;
@@ -481,7 +489,7 @@ QString LayerGroupItem::text(int col) const {
   return QString::null;
 }
 
-int LayerGroupItem::compare(QListViewItem* item, int, bool) const {
+int LayerGroupItem::compare(Q3ListViewItem* item, int, bool) const {
   return layer()->SortId() - extractLayer(item)->SortId();
 }
 
@@ -493,7 +501,7 @@ void LayerGroupItem::stateChange(bool state) {
   myProjectManager()->cancelDrag();
   LayerItem* layerItem;
   LayerGroupItem* layerGroupItem;
-  QListViewItem* item = firstChild();
+  Q3ListViewItem* item = firstChild();
   while (item) {
     if (item->rtti() == LAYER) {
       layerItem = static_cast<LayerItem*>(item);
@@ -530,7 +538,7 @@ bool LayerDrag::canDecode(QMimeSource* e) {
 
 
 ProjectManager::ProjectManager(QWidget* parent, const char* name, Type t)
-  : QListView(parent, name, 0),
+  : Q3ListView(parent, name, 0),
       type_(t),
       mouse_pressed_(false),
       drag_layer_(0),
@@ -544,7 +552,7 @@ ProjectManager::ProjectManager(QWidget* parent, const char* name, Type t)
   if (Preferences::ExpertMode) {
     addColumn("Name");
     addColumn("ID");
-    setColumnWidthMode(1, QListView::Maximum);
+    setColumnWidthMode(1, Q3ListView::Maximum);
     header()->setStretchEnabled(true, 0);
     header()->setStretchEnabled(false, 1);
     header()->show();
@@ -554,16 +562,16 @@ ProjectManager::ProjectManager(QWidget* parent, const char* name, Type t)
     header()->hide();
   }
 
-  connect(this, SIGNAL(doubleClicked(QListViewItem*)),
-          this, SLOT(itemDoubleClicked(QListViewItem *)));
+  connect(this, SIGNAL(doubleClicked(Q3ListViewItem*)),
+          this, SLOT(itemDoubleClicked(Q3ListViewItem *)));
 
-  connect(this, SIGNAL(contextMenuRequested(QListViewItem*, const QPoint&, int)),
-          this, SLOT(contextMenu(QListViewItem*, const QPoint&, int)));
+  connect(this, SIGNAL(contextMenuRequested(Q3ListViewItem*, const QPoint&, int)),
+          this, SLOT(contextMenu(Q3ListViewItem*, const QPoint&, int)));
 
-  connect(this, SIGNAL(pressed(QListViewItem*)),
-          this, SLOT(pressed(QListViewItem*)));
-  connect(this, SIGNAL(selectionChanged(QListViewItem*)),
-          this, SLOT(selectionChanged(QListViewItem*)));
+  connect(this, SIGNAL(pressed(Q3ListViewItem*)),
+          this, SLOT(pressed(Q3ListViewItem*)));
+  connect(this, SIGNAL(selectionChanged(Q3ListViewItem*)),
+          this, SLOT(selectionChanged(Q3ListViewItem*)));
 
   connect(GfxView::instance, SIGNAL(drawVectors(const gstDrawState&)),
           this, SLOT(DrawFeatures(const gstDrawState&)));
@@ -591,24 +599,24 @@ void ProjectManager::forcePreviewRedraw() {
   emit redrawPreview();
 }
 
-uint ProjectManager::numLayers() {
+unsigned int ProjectManager::numLayers() {
   return project_->layers_.size();
 }
 
 // this signal is only needed for de-select
 // selectionChanged() below will get called with valid items
 // but pressed() won't get called with keyboard actions (arrows)
-void ProjectManager::pressed(QListViewItem* item) {
+void ProjectManager::pressed(Q3ListViewItem* item) {
   if (item == NULL)
     selectItem(NULL);
 }
 
-void ProjectManager::selectionChanged(QListViewItem* item) {
+void ProjectManager::selectionChanged(Q3ListViewItem* item) {
   selectItem(item);
 }
 
 
-void ProjectManager::selectItem(QListViewItem* item) {
+void ProjectManager::selectItem(Q3ListViewItem* item) {
   assert(project_ != NULL);
 
   //
@@ -634,11 +642,11 @@ void ProjectManager::selectItem(QListViewItem* item) {
 }
 
 
-bool ProjectManager::canRaise(QListViewItem* item) {
+bool ProjectManager::canRaise(Q3ListViewItem* item) {
   if (item->rtti() == FILTER)
     item = item->parent();
 
-  QListViewItem* firstChild;
+  Q3ListViewItem* firstChild;
   if (item->parent() == 0) {
     firstChild = this->firstChild();
   } else {
@@ -649,7 +657,7 @@ bool ProjectManager::canRaise(QListViewItem* item) {
 }
 
 
-bool ProjectManager::canLower(QListViewItem* item) {
+bool ProjectManager::canLower(Q3ListViewItem* item) {
   if (item->rtti() == FILTER)
     item = item->parent();
 
@@ -659,7 +667,7 @@ bool ProjectManager::canLower(QListViewItem* item) {
 //
 // update moveup, movedown, and delete buttons
 //
-void ProjectManager::updateButtons(QListViewItem* item) {
+void ProjectManager::updateButtons(Q3ListViewItem* item) {
   if (item ==  NULL) {
     emit layerStateChange(0, 0, 0);
   } else {
@@ -685,7 +693,7 @@ ProjectManager::MakeDefaultLayerConfig(const QString &name,
   cfg.defaultLocale.ClearDefaultFlags();
   cfg.defaultLocale.name_ = name;
   cfg.defaultLocale.icon_ = IconReference(IconReference::Internal,
-                                          kDefaultIconName);
+                                          kDefaultIconName.c_str());
 
   // Add a default display rule and get some refs to the internal pieces
   // so we can poke in some override values below
@@ -710,7 +718,7 @@ ProjectManager::MakeDefaultLayerConfig(const QString &name,
     feature.style.altitudeMode = StyleConfig::Relative;
   }
   QColor rnd = getRandomColor();
-  feature.style.lineColor = makevec4<uint>(rnd.red(), rnd.green(),
+  feature.style.lineColor = makevec4< unsigned int> (rnd.red(), rnd.green(),
                                            rnd.blue(), 255);
 
   // Initialize site config based on primitive type expected for this layer
@@ -729,7 +737,7 @@ ProjectManager::MakeDefaultGroupConfig(const QString &name) const {
   cfg.defaultLocale.ClearDefaultFlags();
   cfg.defaultLocale.name_ = name;
   cfg.defaultLocale.icon_ = IconReference(IconReference::Internal,
-                                          kDefaultIconName);
+                                          kDefaultIconName.c_str());
 
   return cfg;
 }
@@ -778,7 +786,7 @@ void ProjectManager::addLayerGroup() {
   }
 }
 
-void ProjectManager::itemDoubleClicked(QListViewItem* item) {
+void ProjectManager::itemDoubleClicked(Q3ListViewItem* item) {
   if (item == NULL || item->rtti() != FILTER)
     return;
   int idx = static_cast<FilterItem*>(item)->FilterId();
@@ -786,7 +794,7 @@ void ProjectManager::itemDoubleClicked(QListViewItem* item) {
   // we can't call configureDisplayRules directly since it may delete this
   // FilterItem. And the Qt routine that called us will access it again
   // after we return. Post an event back to myself with the layerItem
-  // (as QListViewItem) and the filter id
+  // (as Q3ListViewItem) and the filter id
   QApplication::postEvent(this,
                           new ConfigDispRuleEvent(item->parent(), idx));
 }
@@ -821,14 +829,14 @@ void SetSkipLayer(gstLayer *layer, bool skip) {
 }
 
 template <class Func>
-void ProcessGroupAndChildren(QListViewItem *item, const Func &func) {
+void ProcessGroupAndChildren(Q3ListViewItem *item, const Func &func) {
   if (item->rtti() == LAYER) {
     func(extractLayer(item));
     item->repaint();
   } else if (item->rtti() == GROUP) {
     func(extractLayer(item));
     item->repaint();
-    QListViewItem *child = item->firstChild();
+    Q3ListViewItem *child = item->firstChild();
     while (child) {
       ProcessGroupAndChildren(child, func);
       child = child->nextSibling();
@@ -838,7 +846,7 @@ void ProcessGroupAndChildren(QListViewItem *item, const Func &func) {
 
 // Do a check for unique layer name in the current project.
 // If it is not unique, warn the user and return false.
-bool ProjectManager::LayerNameSanityCheck(QListViewItem *item, const QString& name) {
+bool ProjectManager::LayerNameSanityCheck(Q3ListViewItem *item, const QString& name) {
   bool ok_to_proceed_with_name = true;
 
   if (FindLayerNameAmongSiblings(item, name)) {
@@ -867,7 +875,7 @@ bool ProjectManager::LayerNameSanityCheck(QListViewItem *item, const QString& na
 // Return true if it's ok, false if the user needs to try again to enter a valid UUID.
 // The new_uuid is modified on return if deemed necessary
 // (possibly reverting it or creating a new one) and should be used as the valid value of the uuid.
-bool ProjectManager::UuidSanityCheck(QListViewItem* item,
+bool ProjectManager::UuidSanityCheck(Q3ListViewItem* item,
                                          const std::string& old_uuid, std::string& new_uuid)
 {
   bool ok_to_proceed_with_uuid = true;
@@ -892,7 +900,7 @@ bool ProjectManager::UuidSanityCheck(QListViewItem* item,
         new_uuid = create_uuid_string();
       }
     } else if (old_uuid != "" && old_uuid != new_uuid) {
-      if (FindUuid(firstChild(), item, new_uuid)) {
+      if (FindUuid(firstChild(), item, new_uuid.c_str())) {
         QMessageBox::critical(
           this, tr("Error"),
           tr("This Universal Unique ID  already exists for another asset.\n"
@@ -916,7 +924,7 @@ bool ProjectManager::UuidSanityCheck(QListViewItem* item,
           new_uuid = old_uuid;
         }
       }
-    } else if (FindUuid(firstChild(), item, new_uuid)) {
+    } else if (FindUuid(firstChild(), item, new_uuid.c_str())) {
       QMessageBox::critical(
           this, tr("Error"),
           tr("This Universal Unique ID  already exists for another asset.\n"
@@ -929,7 +937,7 @@ bool ProjectManager::UuidSanityCheck(QListViewItem* item,
   return ok_to_proceed_with_uuid;
 }
 
-void ProjectManager::contextMenu(QListViewItem* item, const QPoint& pos, int) {
+void ProjectManager::contextMenu(Q3ListViewItem* item, const QPoint& pos, int) {
   if (item && !item->isEnabled())
     return;
 
@@ -1074,7 +1082,7 @@ void ProjectManager::contextMenu(QListViewItem* item, const QPoint& pos, int) {
           bool ok_to_proceed = UuidSanityCheck(item, oldcfg.asset_uuid_, new_uuid);
           // Set the uuidEdit (in case it's changed).
           newcfg.asset_uuid_ = new_uuid;
-          prop.uuidEdit->setText(new_uuid);
+          prop.uuidEdit->setText(new_uuid.c_str());
           // If it's not unique, we need to continue and let the user try again.
           if (!ok_to_proceed) continue;
 
@@ -1132,7 +1140,7 @@ void ProjectManager::contextMenu(QListViewItem* item, const QPoint& pos, int) {
           std::string new_uuid = newcfg.asset_uuid_;
           bool ok_to_proceed = UuidSanityCheck(item, oldcfg.asset_uuid_, new_uuid);
           // Set the uuidEdit (in case it's changed).
-          prop.uuidEdit->setText(new_uuid);
+          prop.uuidEdit->setText(new_uuid.c_str());
           newcfg.asset_uuid_ = new_uuid;
           // If it's not unique, we need to continue and let the user try again.
           if (!ok_to_proceed) continue;
@@ -1189,7 +1197,7 @@ void ProjectManager::contextMenu(QListViewItem* item, const QPoint& pos, int) {
           // we can't call configureDisplayRules directly since it may
           // delete this FilterItem. And the Qt routine that called us will
           // access it again after we return. Post an event back to myself
-          // with the layerItem (as QListViewItem) and the filter id
+          // with the layerItem (as Q3ListViewItem) and the filter id
           QApplication::postEvent(this,
                                   new ConfigDispRuleEvent(item->parent(),idx));
           break;
@@ -1220,9 +1228,9 @@ void ProjectManager::contextMenu(QListViewItem* item, const QPoint& pos, int) {
 }
 
 void ProjectManager::exportDisplayTemplate(gstLayer* layer) {
-  QFileDialog fd(this);
+  Q3FileDialog fd(this);
   fd.setCaption(tr("Export Template"));
-  fd.setMode(QFileDialog::AnyFile);
+  fd.setMode(Q3FileDialog::AnyFile);
   fd.addFilter(tr("Fusion Template File (*.khdsp)"));
 
   //
@@ -1361,13 +1369,13 @@ void ProjectManager::importDisplayTemplate(QCheckListItem* item) {
 }
 
 
-void ProjectManager::moveLayerUp(QListViewItem* item) {
+void ProjectManager::moveLayerUp(Q3ListViewItem* item) {
   if (item == NULL)
     item = selectedItem();
   if (item == NULL)
     return;
 
-  QListViewItem* next;
+  Q3ListViewItem* next;
   if (item->parent() != 0)
     next = item->parent()->firstChild();
   else
@@ -1380,7 +1388,7 @@ void ProjectManager::moveLayerUp(QListViewItem* item) {
   if (next != 0) {
     gstLayer* nextLayer = extractLayer(next);
     gstLayer* thisLayer = extractLayer(item);
-    uint tempSortId = nextLayer->SortId();
+    unsigned int tempSortId = nextLayer->SortId();
     nextLayer->SetSortId(thisLayer->SortId());
     thisLayer->SetSortId(tempSortId);
 
@@ -1391,7 +1399,7 @@ void ProjectManager::moveLayerUp(QListViewItem* item) {
   updateButtons(item);
 }
 
-void ProjectManager::moveLayerDown(QListViewItem* item) {
+void ProjectManager::moveLayerDown(Q3ListViewItem* item) {
   if (item == NULL)
     item = selectedItem();
   if (item == NULL)
@@ -1400,7 +1408,7 @@ void ProjectManager::moveLayerDown(QListViewItem* item) {
   if (item->nextSibling() != 0) {
     gstLayer* nextLayer = extractLayer(item->nextSibling());
     gstLayer* thisLayer = extractLayer(item);
-    uint tempSortId = nextLayer->SortId();
+    unsigned int tempSortId = nextLayer->SortId();
     nextLayer->SetSortId(thisLayer->SortId());
     thisLayer->SetSortId(tempSortId);
     item->moveItem(item->nextSibling());
@@ -1430,19 +1438,19 @@ void ProjectManager::FileOpen() {
   QStringList::Iterator it;
 
   QProgressDialog progress(tr("Please wait while loading..."),
-                           tr("Abort load"), 100, this, "progress", true);
+                           tr("Abort load"), 0, 100, this);
   progress.setCaption(tr("Loading"));
 
   for (it = files.begin(); it != files.end(); ++it) {
     QFileInfo fi(*it);
 
-    QString name = (fi.fileName() == kHeaderXmlFile) ?
-                   fi.dirPath(true).latin1() : fi.absFilePath().latin1();
+    QString name = (fi.fileName() == kHeaderXmlFile.c_str()) ?
+                   fi.dirPath(true) : fi.absFilePath();
 
     addLayers(name.latin1(), codec.latin1());
   }
 
-  progress.setProgress(100);
+  progress.setValue(100);
 
   emit redrawPreview();
 }
@@ -1454,8 +1462,8 @@ void ProjectManager::addLayers(const char* src, const char* codec) {
   if (new_source == NULL)
     return;
 
-  uint numLayers = new_source->NumLayers();
-  for (uint i = 0; i < numLayers; ++i) {
+  unsigned int numLayers = new_source->NumLayers();
+  for (unsigned int i = 0; i < numLayers; ++i) {
     gstFileInfo finfo(new_source->name());
     QString layername = finfo.baseName();
     if (numLayers != 1)
@@ -1553,12 +1561,14 @@ void ProjectManager::AddAssetLayer(const char* assetname) {
     bool isasset = (ver->type == AssetDefs::Imagery ||
                     ver->type == AssetDefs::Terrain);
     gstSource* newsource = openSource(isasset ?
-                                      ver->GetRef().c_str() :
+                                      ver->GetRef().toString().c_str() :
                                       ver->GetOutputFilename(0).c_str(),
                                       0,
                                       isasset);
     if (newsource) {
-      QString layername = shortAssetName(khBasename(asset->GetRef()));
+      std::string basename = khBasename(asset->GetRef().toString());
+      std::string san = shortAssetName(basename);
+      QString layername(san.c_str());
       gstLayer* layer = CreateNewLayer(layername,
                                        newsource, 0 /* src layer num */,
                                        asset->GetRef());
@@ -1592,11 +1602,11 @@ void ProjectManager::AddAssetLayer(const char* assetname) {
 }
 
 // re-implement clearselection ourself since the one provided
-// as QListView::clearSelection() doesn't work.
+// as Q3ListView::clearSelection() doesn't work.
 void ProjectManager::ClearSelection() {
-  QListViewItemIterator it(this);
+  Q3ListViewItemIterator it(this);
   while (it.current()) {
-    QListViewItem* i = it.current();
+    Q3ListViewItem* i = it.current();
     i->setSelected(false);
     ++it;
   }
@@ -1621,7 +1631,7 @@ gstLayer* ProjectManager::CreateNewLayer(const QString& origLayername,
   layer->SetSortId(project_->layers_.size());
 
   // We MUST turn off sorting while we add a new layer item,
-  // otherwise QListView can end up trying to sort our new item before it is
+  // otherwise Q3ListView can end up trying to sort our new item before it is
   // fully constructed. We've see this with drag-n-drop into the list view.
   setSorting(-1);
   LayerItem* item = new LayerItem(this, layer);
@@ -1670,7 +1680,7 @@ bool ProjectManager::applyQueries(gstLayer* layer) {
     return true;
 
   QProgressDialog progress_dialog(tr("Please wait while applying queries..."),
-                                  tr("Cancel"), 100, 0, "progress", true);
+                                  tr("Cancel"), 0, 100);
   progress_dialog.setCaption(tr("Applying Queries"));
 
   gstProgress query_progress;
@@ -1682,9 +1692,9 @@ bool ProjectManager::applyQueries(gstLayer* layer) {
   progress_dialog.show();
 
   while (query_progress.GetState() == gstProgress::Busy) {
-    progress_dialog.setProgress(query_progress.Val());
+    progress_dialog.setValue(query_progress.Val());
     qApp->processEvents();
-    if (progress_dialog.wasCancelled()) {
+    if (progress_dialog.wasCanceled()) {
       query_progress.SetInterrupted();
     }
   }
@@ -1712,7 +1722,7 @@ bool ProjectManager::applyQueries(gstLayer* layer) {
       // error strings
       QString error_message;
       std::vector<std::string> errors = query_progress.Errors();
-      for (uint i = 0; i < errors.size(); ++i) {
+      for (unsigned int i = 0; i < errors.size(); ++i) {
         if (i != 0) {
           error_message += "\n";
         }
@@ -1733,7 +1743,7 @@ bool ProjectManager::applyQueries(gstLayer* layer) {
 void ProjectManager::RefreshLayerList(bool setLegends,
                                       bool setSortIds) {
   project_->layers_.clear();
-  QListViewItemIterator it(this);
+  Q3ListViewItemIterator it(this);
   while (it.current()) {
     // we dont need filters in the layer list
     if (it.current()->rtti() == FILTER) {
@@ -1745,7 +1755,7 @@ void ProjectManager::RefreshLayerList(bool setLegends,
       layer->SetSortId(project_->layers_.size());
     if (setLegends) {
       if (it.current()->parent() == 0)
-        layer->SetLegend(std::string());
+        layer->SetLegend(QString());
       else
         layer->SetLegend(extractLayer(it.current()->parent())->GetPath());
     }
@@ -1758,8 +1768,8 @@ void ProjectManager::RefreshLayerList(bool setLegends,
 // FindLayerNameAmongSiblings checks the sibling items to discover if
 // a sibling other than "item" has the same name.
 // It returns true, if another item with name is found.
-bool ProjectManager::FindLayerNameAmongSiblings(QListViewItem* item, const QString& name) {
-  QListViewItem* next;
+bool ProjectManager::FindLayerNameAmongSiblings(Q3ListViewItem* item, const QString& name) {
+  Q3ListViewItem* next;
   if (item->parent())
     next = item->parent()->firstChild();
   else
@@ -1778,10 +1788,10 @@ bool ProjectManager::FindLayerNameAmongSiblings(QListViewItem* item, const QStri
   return false;
 }
 
-// FindUuid uses a depth first search of a QListViewItem tree rooted at parent to discover if
+// FindUuid uses a depth first search of a Q3ListViewItem tree rooted at parent to discover if
 // a node other than "item" has the same UUID.
 // It returns true, if another item with UUID is found.
-bool ProjectManager::FindUuid(QListViewItem* parent, QListViewItem* item, const QString& uuid) {
+bool ProjectManager::FindUuid(Q3ListViewItem* parent, Q3ListViewItem* item, const QString& uuid) {
 
   // Check to see if an tree element other than item has the same uuid.
   // Return immediately if the current element matches the uuid.
@@ -1790,7 +1800,7 @@ bool ProjectManager::FindUuid(QListViewItem* parent, QListViewItem* item, const 
     // only look into Layers and LayerGroups
     if (rtti == LAYER || rtti == GROUP) {
       if (extractLayer(parent)) {
-        if (extractLayer(parent)->GetUuid() == uuid) {
+        if (extractLayer(parent)->GetUuid() == uuid.toUtf8().constData()) {
           return true;
         }
       }
@@ -1814,7 +1824,7 @@ bool ProjectManager::FindUuid(QListViewItem* parent, QListViewItem* item, const 
   return false;
 }
 
-bool ProjectManager::EnsureUniqueLayerName(QListViewItem* item) {
+bool ProjectManager::EnsureUniqueLayerName(Q3ListViewItem* item) {
   gstLayer* layer = extractLayer(item);
   if (!layer)
     return false;
@@ -1839,14 +1849,14 @@ void ProjectManager::DrawLabels(QPainter* painter, const gstDrawState& state) {
   QFont label_font("Times", 16);
   QFontMetrics label_font_metrics(label_font);
 
-  for (uint ii = 0; ii < project_->layers_.size(); ++ii) {
+  for (unsigned int ii = 0; ii < project_->layers_.size(); ++ii) {
     gstLayer* layer = project_->layers_[ii];
     if (!layer->Enabled())
       continue;
 
     std::vector<gstSiteSet> site_sets;
     layer->GetSiteLabels(state, &site_sets);
-    for (uint s = 0; s < site_sets.size(); ++s) {
+    for (unsigned int s = 0; s < site_sets.size(); ++s) {
       const gstSite* site = site_sets[s].site;
 
       if (!site->config.enabled)
@@ -1858,7 +1868,7 @@ void ProjectManager::DrawLabels(QPainter* painter, const gstDrawState& state) {
         continue;
       }
 
-      for (uint n = 0; n < site_sets[s].vlist.size(); ++n) {
+      for (unsigned int n = 0; n < site_sets[s].vlist.size(); ++n) {
         gstValue* label = site_sets[s].rlist[n]->Field(0);
 
         double x = (site_sets[s].vlist[n].x - state.frust.w) /
@@ -1867,7 +1877,7 @@ void ProjectManager::DrawLabels(QPainter* painter, const gstDrawState& state) {
                    state.Scale();
 
         if (!label->IsEmpty()) {
-          const std::vector<uint>& rgba = site->preview_config.normal_color_;
+          const std::vector< unsigned int> & rgba = site->preview_config.normal_color_;
           QColor color(qRgba(rgba[0], rgba[1], rgba[2], rgba[3]));
           painter->setPen(color);
           painter->setFont(label_font);
@@ -1902,7 +1912,7 @@ void ProjectManager::DrawFeatures(const gstDrawState& state) {
   const int kMaxCount = 200000;
   int max_count = kMaxCount;
 
-  for (uint ii = 0; ii < project_->layers_.size(); ++ii) {
+  for (unsigned int ii = 0; ii < project_->layers_.size(); ++ii) {
     gstLayer* layer = project_->layers_[ii];
     if (layer->Enabled()) {
       layer->DrawFeatures(&max_count, state, false);
@@ -1953,7 +1963,7 @@ void ProjectManager::DrawEditBuffer(const gstDrawState& state) {
 }
 
 gstLayer* ProjectManager::getSelectedLayer() {
-  QListViewItem* item = selectedItem();
+  Q3ListViewItem* item = selectedItem();
   if (item == NULL)
     return NULL;
 
@@ -1989,8 +1999,8 @@ void ProjectManager::selectBox(const gstDrawState& drawState,
   }
 
   int mode;
-  if (btnState & ShiftButton) {
-    if (btnState & ControlButton) {
+  if (btnState & Qt::ShiftModifier) {
+    if (btnState & Qt::ControlModifier) {
       mode = gstSelector::PICK_SUBTRACT;
     } else {
       mode = gstSelector::PICK_ADD;
@@ -2007,7 +2017,7 @@ void ProjectManager::selectBox(const gstDrawState& drawState,
 }
 
 
-void ProjectManager::removeLayer(QListViewItem *item) {
+void ProjectManager::removeLayer(Q3ListViewItem *item) {
   assert(project_ != NULL);
 
   if (item == 0) {
@@ -2064,7 +2074,7 @@ void ProjectManager::removeLayer(QListViewItem *item) {
 }
 
 void ProjectManager::paintEvent(QPaintEvent* e) {
-  QListView::paintEvent(e);
+  Q3ListView::paintEvent(e);
 }
 
 void ProjectManager::UpdateWidgets() {
@@ -2072,7 +2082,7 @@ void ProjectManager::UpdateWidgets() {
 
   QMap<QString, LayerGroupItem*> groupMap;
 
-  for (uint ii = 0; ii < project_->layers_.size(); ++ii) {
+  for (unsigned int ii = 0; ii < project_->layers_.size(); ++ii) {
     gstLayer* layer = project_->layers_[ii];
 
     if (layer->isGroup()) {
@@ -2119,9 +2129,9 @@ void ProjectManager::openAllLayers(bool state) {
 
 
 void ProjectManager::contentsMousePressEvent(QMouseEvent* e) {
-  if (e->button() == LeftButton) {
+  if (e->button() == Qt::LeftButton) {
     QPoint p(contentsToViewport(e->pos()));
-    QListViewItem* i = itemAt(p);
+    Q3ListViewItem* i = itemAt(p);
     if (i && (i->rtti() == LAYER || i->rtti() == GROUP)) {
       // if the user clicked into the root decoration of the item,
       // don't try to start a drag!
@@ -2135,14 +2145,14 @@ void ProjectManager::contentsMousePressEvent(QMouseEvent* e) {
     }
   }
 
-  QListView::contentsMousePressEvent(e);
+  Q3ListView::contentsMousePressEvent(e);
 }
 
 void ProjectManager::contentsMouseMoveEvent(QMouseEvent* e) {
   if (mouse_pressed_ && (press_pos_ - e->pos()).manhattanLength() >
       QApplication::startDragDistance()) {
     mouse_pressed_ = false;
-    QListViewItem* item = itemAt(contentsToViewport(press_pos_));
+    Q3ListViewItem* item = itemAt(contentsToViewport(press_pos_));
     if (item) {
       drag_layer_ = static_cast<LayerItem*>(item);
       gstLayer* layer = extractLayer(item);
@@ -2173,7 +2183,7 @@ void ProjectManager::contentsDragMoveEvent(QDragMoveEvent* e) {
     e->accept(true);
   } else if (LayerDrag::canDecode(e)) {
     QPoint vp = contentsToViewport(e->pos());
-    QListViewItem* i = itemAt(vp);
+    Q3ListViewItem* i = itemAt(vp);
     if (!i) {
       e->accept();
       clearSelection();
@@ -2219,8 +2229,8 @@ void ProjectManager::contentsDropEvent(QDropEvent* e) {
       // drop on a group
 
       // check if the dropped item and its parent are not the same
-      if (static_cast<QListViewItem*>(group) !=
-          static_cast<QListViewItem*>(drag_layer_)) {
+      if (static_cast<Q3ListViewItem*>(group) !=
+          static_cast<Q3ListViewItem*>(drag_layer_)) {
         // remove dragged item from parent
         drag_layer_->orphan();
 
@@ -2267,12 +2277,15 @@ void ProjectManager::contentsDropEvent(QDropEvent* e) {
     AssetDrag::decode(e, text);
     QStringList assets = QStringList::split(QChar(127), text);
     for (QStringList::Iterator it = assets.begin(); it != assets.end(); ++it) {
-      Asset asset(AssetDefs::FilenameToAssetPath((*it).latin1()));
+      Asset asset(AssetDefs::FilenameToAssetPath(it->toUtf8().constData()));
       AssetVersion ver(asset->GetLastGoodVersionRef());
       if (ver) {
-         AddAssetLayer((*it).latin1());
+         AddAssetLayer(it->latin1());
       } else {
-        nogoodversions += "   " + shortAssetName(*it) + "\n";
+        std::string san = shortAssetName(*it);
+        nogoodversions += QString("   " )
+                       +  QString(san.c_str())
+                       +  QString("\n");
       }
     }
 
@@ -2305,9 +2318,9 @@ QString ProjectManager::CleanupDropText(const QString &text) {
   return modstr;
 }
 
-void ProjectManager::customEvent(QCustomEvent *e) {
+void ProjectManager::customEvent(QEvent *e) {
   int filterId = 0;
-  QListViewItem *listItem = 0;
+  Q3ListViewItem *listItem = 0;
 
   // Make sure this is really an event that we sent.
   switch ((int)e->type()) {
@@ -2336,7 +2349,7 @@ void ProjectManager::customEvent(QCustomEvent *e) {
   }
 
   // make sure that the listitem that we squirelled away is still valid
-  QListViewItemIterator it(this);
+  Q3ListViewItemIterator it(this);
   while (it.current()) {
     if (it.current() == listItem) {
       break;
@@ -2379,7 +2392,7 @@ void ProjectManager::removeAllLayers(void) {
   }
 
   clear();
-  for (uint ii = 0; ii < project_->layers_.size(); ++ii) {
+  for (unsigned int ii = 0; ii < project_->layers_.size(); ++ii) {
     project_->layers_[ii]->unref();
   }
   RefreshLayerList(true, true);

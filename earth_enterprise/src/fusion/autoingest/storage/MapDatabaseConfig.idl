@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,12 +14,13 @@
 // limitations under the License.
 
 
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <khTypes.h>
 #include <khMetaData.h>
 #include <searchtabs/.idl/SearchTabs.h>
 #include <autoingest/.idl/storage/SearchTabReference.h>
+#requiresgetheapusage
 
 #cppquote
 #include <searchtabs/.idl/SearchTabs_impl.h>
@@ -30,7 +32,7 @@ class MapDatabaseConfig {
   std::string imageryProject;
   std::string mapProject;
 
-  IsUpToDateIgnore uint indexVersion = uint(1);
+  IsUpToDateIgnore unsigned int indexVersion = uint(1);
   deprecated bool searchTabsEnabled = false;
 
   // TODO: deprecate search_tabs_, search_tab_refs_.
@@ -52,7 +54,6 @@ class MapDatabaseConfig {
   void ResetIds(void) {
     indexVersion = 1;
   }
-
 #/hquote
 };
 
@@ -64,4 +65,3 @@ class MapDatabaseEditRequest {
 
 #pragma StrLoadAndSave
 };
-

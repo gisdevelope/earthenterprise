@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +23,7 @@ Description:
 #include "khAssetManager.h"
 
 #include "common/khnet/SocketException.h"
+#include "fusion/autoingest/sysman/AssetOperation.h"
 #include "fusion/autoingest/sysman/khSystemManager.h"
 #include "fusion/autoingest/sysman/khResourceManager.h"
 #include "fusion/autoingest/sysman/plugins/RasterProductAssetD.h"
@@ -82,8 +84,8 @@ khAssetManager::AssertPendingEmpty(void) {
   assert(pendingTaskCmds.size() == 0);
   assert(pendingFileDeletes.size() == 0);
   assert(alwaysTaskCmds.size() == 0);
-  assert(MutableAssetD::dirtyMap.size() == 0);
-  assert(MutableAssetVersionD::dirtyMap.size() == 0);
+  assert(Asset::DirtySize() == 0);
+  assert(AssetVersion::DirtySize() == 0);
 }
 
 // ****************************************************************************
@@ -101,7 +103,7 @@ khAssetManager::ApplyPending(void)
   // The actual list saved may be smaller than what's
   // in the dirty set. Some things can be in the dirty set
   // even if it really didn't change
-  std::vector<std::string> savedAssets;
+  std::vector<SharedString> savedAssets;
 
 
   QTime timer;
@@ -109,39 +111,27 @@ khAssetManager::ApplyPending(void)
 
   notify(NFY_INFO, "Asset cache size = %d", Asset::CacheSize());
   notify(NFY_INFO, "Version cache size = %d", AssetVersion::CacheSize());
+  notify(NFY_INFO, "Approx. memory used by asset cache = %lu B", Asset::CacheMemoryUse());
+  notify(NFY_INFO, "Approx. memory used by version cache = %lu B", AssetVersion::CacheMemoryUse());
 
 #ifndef SKIP_SAVE
 
   // ***** prep the pending changes *****
   // save the asset & version records to ".new"
-  if (MutableAssetD::dirtyMap.size()) {
-    notify(NFY_INFO, "Writing %lu asset records",
-           static_cast<long unsigned>(MutableAssetD::dirtyMap.size()));
-#if 0
-    MutableAssetD::PrintDirty("Assets");
-#endif
-    timer.start();
-    if (!MutableAssetD::SaveDirtyToDotNew(filetrans, &savedAssets)) {
-      throw khException(kh::tr("Unable to save modified assets"));
-    }
-    int elapsed = timer.elapsed();
-    notify(NFY_INFO, "Elapsed writing time: %s",
-           khProgressMeter::msToString(elapsed).latin1());
+  timer.start();
+  if (!MutableAssetD::SaveDirtyToDotNew(filetrans, &savedAssets)) {
+    throw khException(kh::tr("Unable to save modified assets"));
   }
-  if (MutableAssetVersionD::dirtyMap.size()) {
-    notify(NFY_INFO, "Writing %lu version records",
-           static_cast<long unsigned>(MutableAssetVersionD::dirtyMap.size()));
-#if 0
-    MutableAssetVersionD::PrintDirty("Versions");
-#endif
-    timer.start();
-    if (!MutableAssetVersionD::SaveDirtyToDotNew(filetrans, 0)) {
-      throw khException(kh::tr("Unable to save modified versions"));
-    }
-    int elapsed = timer.elapsed();
-    notify(NFY_INFO, "Elapsed writing time: %s",
+  elapsed = timer.elapsed();
+  notify(NFY_INFO, "Elapsed writing time: %s",
            khProgressMeter::msToString(elapsed).latin1());
+  timer.start();
+  if (!MutableAssetVersionD::SaveDirtyToDotNew(filetrans, 0)) {
+    throw khException(kh::tr("Unable to save modified versions"));
   }
+  elapsed = timer.elapsed();
+  notify(NFY_INFO, "Elapsed writing time: %s",
+         khProgressMeter::msToString(elapsed).latin1());
 
 
 
@@ -163,20 +153,19 @@ khAssetManager::ApplyPending(void)
 
   // build a list of AssetChanges
   AssetChanges changes;
-  for (std::vector<std::string>::const_iterator i = savedAssets.begin();
-       i != savedAssets.end(); ++i) {
-    changes.items.push_back(AssetChanges::Item(*i, "Modified"));
+  for (const auto & ref : savedAssets) {
+    changes.items.push_back(AssetChanges::Item(ref, "Modified"));
   }
-  for (std::map<std::string, AssetDefs::State>::const_iterator i
+  for (std::map<SharedString, AssetDefs::State>::const_iterator i
          = pendingStateChanges.begin();
        i != pendingStateChanges.end(); ++i) {
-    changes.items.push_back(AssetChanges::Item(i->first,
+    changes.items.push_back(AssetChanges::Item(i->first.toString(),
                                                ToString(i->second)));
   }
-  for (std::map<std::string, double>::const_iterator i
+  for (std::map<SharedString, double>::const_iterator i
          = pendingProgress.begin();
        i != pendingProgress.end(); ++i) {
-    changes.items.push_back(AssetChanges::Item(i->first,
+    changes.items.push_back(AssetChanges::Item(i->first.toString(),
                                                "Progress( " +
                                                ToString(i->second) +
                                                ")"));
@@ -226,8 +215,6 @@ khAssetManager::ApplyPending(void)
   pendingProgress.clear();
   pendingTaskCmds.clear();
   pendingFileDeletes.clear();
-  MutableAssetD::dirtyMap.clear();
-  MutableAssetVersionD::dirtyMap.clear();
   elapsed = timer.elapsed();
   notify(NFY_INFO, "Elapsed cleanup time: %s",
          khProgressMeter::msToString(elapsed).latin1());
@@ -458,11 +445,13 @@ khAssetManager::HandleClientLoop(FusionConnection::Handle client) throw()
           } else if (cmdname == PUBLISH_DATABASE) {
             // TODO: Deserialize parameters from protobuf here.
             replyPayload = PublishDatabase(msg.payload);
+          } else if (cmdname == GET_TASKS) {
+            replyPayload = RetrieveTasking(msg);
           } else {
             DispatchRequest(msg, replyPayload);
           }
           if (replyPayload.substr(0, 6) == "ERROR:") {
-            client->SendException(msg, replyPayload);
+            client->SendException(msg, replyPayload.c_str());
           } else {
             client->SendReply(msg, replyPayload);
           }
@@ -569,17 +558,28 @@ khAssetManager::ClientListenerLoop(void) throw() {
 // ***  khAssetManager - routines that gather changes while AssetGuard is held
 // ****************************************************************************
 void
-khAssetManager::NotifyVersionStateChange(const std::string &ref,
+khAssetManager::NotifyVersionStateChange(const SharedString &ref,
                                          AssetDefs::State state)
 {
   // assert that we're already locked
   assert(!mutex.TryLock());
-
+  
+  if (ToString(pendingStateChanges[ref]) == "") {
+    notify(NFY_VERBOSE, "Set pendingStateChanges[%s]: <empty> to state: %s",
+         ref.toString().c_str(),
+         ToString(state).c_str());
+  }
+  else {
+    notify(NFY_VERBOSE, "Set pendingStateChanges[%s]: %s to state: %s",
+         ref.toString().c_str(),
+         ToString(pendingStateChanges[ref]).c_str(),
+         ToString(state).c_str());
+  }
   pendingStateChanges[ref] = state;
 }
 
 void
-khAssetManager::NotifyVersionProgress(const std::string &ref, double progress)
+khAssetManager::NotifyVersionProgress(const SharedString &ref, double progress)
 {
   // assert that we're already locked
   assert(!mutex.TryLock());
@@ -588,13 +588,13 @@ khAssetManager::NotifyVersionProgress(const std::string &ref, double progress)
 }
 
 void
-khAssetManager::SubmitTask(const std::string &verref, const TaskDef &taskdef,
+khAssetManager::SubmitTask(const SharedString &verref, const TaskDef &taskdef,
                            int priority)
 {
   // assert that we're already locked
   assert(!mutex.TryLock());
 
-  uint32 taskid = NextTaskId::Get();
+  std::uint32_t taskid = NextTaskId::Get();
   MutableAssetVersionD(verref)->taskid = taskid;
 
   SubmitTaskMsg submitMsg(verref,
@@ -646,11 +646,7 @@ khAssetManager::TaskProgress(const TaskProgressMsg &msg)
 {
   assert(!mutex.TryLock());
   notify(NFY_INFO, "TaskProgress %s", msg.verref.c_str());
-
-  AssetVersionD ver(msg.verref);
-  if (ver->taskid == msg.taskid) {
-    MutableAssetVersionD(msg.verref)->HandleTaskProgress(msg);
-  }
+  ::HandleTaskProgress(msg);
 }
 
 void
@@ -670,10 +666,7 @@ khAssetManager::TaskDone(const TaskDoneMsg &msg)
   alwaysTaskCmds.push_back
     (TaskCmd(std::mem_fun(&khResourceManager::BumpDownBlockers)));
 
-  AssetVersionD ver(msg.verref);
-  if (ver->taskid == msg.taskid) {
-    MutableAssetVersionD(msg.verref)->HandleTaskDone(msg);
-  }
+  ::HandleTaskDone(msg);
 }
 
 void
@@ -748,7 +741,7 @@ khAssetManager::CancelVersion(const std::string &verref)
 {
   assert(!mutex.TryLock());
   notify(NFY_INFO, "CancelVersion %s", verref.c_str());
-  MutableAssetVersionD(verref)->Cancel();
+  ::CancelVersion(verref);
 }
 
 void
@@ -756,7 +749,7 @@ khAssetManager::RebuildVersion(const std::string &verref)
 {
   assert(!mutex.TryLock());
   notify(NFY_INFO, "RebuildVersion %s", verref.c_str());
-  MutableAssetVersionD(verref)->Rebuild();
+  ::RebuildVersion(verref);
 }
 
 void
@@ -991,9 +984,12 @@ khAssetManager::MercatorMapDatabaseModify(const MapDatabaseEditRequest &req) {
 
 void
 khAssetManager::GetCurrTasks(const std::string &dummy, TaskLists &ret) {
-  assert(!mutex.TryLock());
+  unsigned int mutexWaitTime = MiscConfig::Instance().MutexTimedWaitSec;
+
+  // Passing in a timeout will throw khTimedMutexException if mutexWaitTime is
+  // exceeded trying to acquire the lock. 
   notify(NFY_INFO, "GetCurrTasks");
-  khLockGuard lock(theResourceManager.mutex);
+  khLockGuard timedLock(theResourceManager.mutex, mutexWaitTime);
   theResourceManager.GetCurrTasks(ret);
 }
 
@@ -1037,7 +1033,7 @@ khAssetManager::MakeAssetDir(const std::string &assetdir) {
     throw khException
       (kh::tr
        ("INTERNAL ERROR: Attempt to make a non-relative asset directory:\n%1")
-       .arg(assetdir));
+       .arg(assetdir.c_str()));
   }
   std::string dir = AssetDefs::AssetPathToFilename(assetdir);
   khMakeDirOrThrow(dir, 0755);
@@ -1049,6 +1045,7 @@ khAssetManager::MakeAssetDir(const std::string &assetdir) {
 const std::string khAssetManager::ASSET_STATUS = "AssetStatus";
 const std::string khAssetManager::PUSH_DATABASE = "PushDatabase";
 const std::string khAssetManager::PUBLISH_DATABASE = "PublishDatabase";
+const std::string khAssetManager::GET_TASKS = "GetCurrTasks";
 
 /**
  * Get status of all versions of an asset.
@@ -1219,4 +1216,28 @@ std::string khAssetManager::PublishDatabase(
   }
 
   return std::string("Database Successfully Published.");
+}
+
+std::string khAssetManager::RetrieveTasking(const FusionConnection::RecvPacket& msg) {
+  std::string replyPayload;
+  try {
+    TaskLists ret;
+    std::string dummy;
+    GetCurrTasks(dummy, ret);
+    if (!ToPayload(ret, replyPayload)) {
+	    throw khException(kh::tr("Unable to encode %1 reply payload")
+	      .arg(ToQString(GET_TASKS)));
+	  }
+  }
+  catch (khTimedMutexException e) {
+    // Replying with a string beginning "ERROR:" passes an exception message back to the caller
+    // alternatively we could throw an exception but that could flood fusion logs with warnings
+    replyPayload = sysManBusyMsg;
+  }
+  catch (...) {
+    // Allow all other exceptions to continue as before
+    throw;
+  }
+
+  return replyPayload;
 }

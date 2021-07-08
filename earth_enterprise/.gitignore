@@ -4,10 +4,8 @@
 /*.creator.user
 /*.files
 /*.includes
-
-# vs code files
-/*.vscode
+/*.cflags
+/*.cxxflags
 
 # compiled python
 /**/*.pyc
-

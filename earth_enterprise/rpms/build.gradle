@@ -1,4 +1,4 @@
-// Copyright 2017 the Open GEE Contributors
+// Copyright 2017 - 2021 the Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,48 +43,18 @@ buildscript {
     }
 
     dependencies {
-        // OSPackage 4.4.0, 4.4.1, 4.4.2, 4.5.0, 4.5.1 produce RPMs that fail
-        // to install on Cent OS 6, so we use the older version:
-        classpath 'com.netflix.nebula:gradle-ospackage-plugin:4.3.0'
+        classpath 'com.netflix.nebula:gradle-ospackage-plugin:8.2.0'
     }
 }
 
 apply plugin: "nebula.ospackage"
 
 import org.opengee.shell.GeeCommandLine
-
-// Varables used for specifying location of two files
-// 'gee_long_version.txt' and 'gepgcommon'
-def src_dir = "../src/"
-def scons_option = "release=1"
-
-// Look for command line parameters that specify how the packages are
-// to be built.  This can be either 'optimize' or 'debug'.
-// Option 'release' is the default.
-def native_dir = {
-  if ( project.hasProperty( 'optimize' ) ) {
-    scons_option = "optimize=1"
-    return "NATIVE-OPT-x86_64"
-  }  // end check for option 'optimze'
-  if ( project.hasProperty( 'debug' ) ) {
-    scons_option = "release=0"
-    return "NATIVE-DBG-x86_64"
-  }
-  return "NATIVE-REL-x86_64"
-}  // end native_dir
-
-// Build the actual file to be used
-def gee_long_version_txt = "${src_dir}${native_dir()}/gee_long_version.txt"
-
-
-def rpmPlatformString = org.opengee.os.Platform.rpmPlatformString
+import org.opengee.io.CopySpecTemplates
 
 def stagedInstall_path =
-    project.hasProperty('stageInstallPath') ?
-        project.stageInstallPath :
-        (project.hasProperty('buildOpenGee') ?
-            "${buildDir.getAbsolutePath()}/install" :
-            '/tmp/fusion_os_install')
+    project.hasProperty('stageInstallPath') ? project.stageInstallPath : '/tmp/fusion_os_install'
+
 if (new File('build.properties').exists()) {
     def props = new Properties()
     new File('build.properties').withInputStream {
@@ -95,66 +65,84 @@ if (new File('build.properties').exists()) {
     }
 }
 
-// Create a file handle for gee_long_version_txt
+// Look for command line parameters that specify how the packages are
+// to be built.  This can be either 'optimize' or 'debug'.
+// Option 'release' is the default.
+def scons_option = "release=1"
+
+if ( project.hasProperty( 'optimize' ) ) {
+    scons_option = "optimize=1"
+}  // end check for option 'optimze'
+else if ( project.hasProperty( 'debug' ) || project.hasProperty( 'internal' ) ) {
+    scons_option = "internal=1"
+}
+
+def rpmPlatformString = org.opengee.os.Platform.rpmPlatformString
+
+// Get the version of OpenGEE we're building:
+def gee_long_version_txt = "${stagedInstall_path}/gee_long_version.txt"
 def openGeeVersionFile = new File( gee_long_version_txt )
 
-// Call scons to create the file 'gee_long_version.txt'
-// The actual parameter used by scons is based on the parameter
-// passing into Gradlew
-if ( !openGeeVersionFile.exists() ) {
-    GeeCommandLine.expand(
-      ["/usr/bin/scons", scons_option, gee_long_version_txt ],
-      "Runing `scons` to produce <${gee_long_version_txt}> failed!",
-      null, // Use default environment variables.
-      new File( src_dir )
+ext.getOsPackageVersionFromOpenGeeVersion = { value -> 
+    return value.split('-')[0]
+}
+
+ext.getOsPackageBuildFromOpenGeeVersion = { value ->
+    return value.split('-')[1]
+}
+
+def getOsPackageVersionOrBuildFromOpenGeeVersionFile(file, getString) {
+    return getString(
+        file.readLines().
+        collect {
+            // Strip comments:
+            def commentIndex = it.indexOf('#')
+
+            commentIndex < 0 ? it : it.substring(0, commentIndex)
+        }.
+        collect { it.trim() }. // Trim whitespace.
+        findAll { !it.isEmpty() }. // Skip empty lines.
+        findResult {
+            it // The first string that remains is the version string.
+        }
     )
 }
 
-def openGeeVersion =
-    openGeeVersionFile.readLines().
-    collect {
-        // Strip comments:
-        def commentIndex = it.indexOf('#')
+def getOsPackageVersionFromOpenGeeVersionFile(file) {
+    return getOsPackageVersionOrBuildFromOpenGeeVersionFile(
+        file,
+        getOsPackageVersionFromOpenGeeVersion
+    )
+}
 
-        commentIndex < 0 ? it : it.substring(0, commentIndex)
-    }.
-    collect { it.trim() }. // Trim whitespace.
-    findAll { !it.isEmpty() }. // Skip empty lines.
-    findResult {
-        it // The first string that remains is the version string.
-    }.
-    replaceAll(/-.*release/, '').
-    replaceAll('-', '.')
+def getOsPackageBuildFromOpenGeeVersionFile(file) {
+    return getOsPackageVersionOrBuildFromOpenGeeVersionFile(
+        file,
+        getOsPackageBuildFromOpenGeeVersion
+    )
+}
+
+
 
 def stagedInstallDir = new File(stagedInstall_path)
-def stagedInstallDir_common = new File(stagedInstallDir, 'common')
 def stagedInstallDir_common_opt = new File(stagedInstallDir, 'common/opt')
 def stagedInstallDir_common_user_magic =
     new File(stagedInstallDir, 'common/user_magic')
 def stagedInstallDir_manual = new File(stagedInstallDir, 'manual')
 def stagedInstallDir_server_opt = new File(stagedInstallDir, 'server/opt')
 def stagedInstallDir_server_etc = new File(stagedInstallDir, 'server/etc')
-def stagedInstallDir_server_apachesupport =
-    new File(stagedInstallDir, 'server/AppacheSupport/')
 def stagedInstallDir_server_searchexample =
     new File(stagedInstallDir, 'searchexample/opt/google/share/searchexample')
 def stagedInstallDir_server_geplaces =
     new File(stagedInstallDir, 'geplaces/opt/google/share/geplaces')
 def stagedInstallDir_server_user_magic =
     new File(stagedInstallDir, 'server/user_magic')
-def stagedInstallDir_server_version =
-    new File(stagedInstallDir, 'server/opt/google/gehttpd/htdocs/earth/gee_long_version.txt')
 def stagedInstallDir_fusion = new File(stagedInstallDir, 'fusion')
 def stagedInstallDir_tutorial = new File(stagedInstallDir, 'tutorial')
 def packageInstallRootDir = new File('/')
 def packageInstallLibDir = new File(packageInstallRootDir, 'opt/google/lib')
 
-def postGisInstallDir = new File(
-        project.projectDir,
-        "${src_dir}${native_dir()}/third_party/postgis/install"
-    ).getAbsolutePath()
-
-def postGisInstallDir_opt = new File(postGisInstallDir, 'opt')
+def stagedInstallDir_postgis_opt = new File(stagedInstallDir, 'postgis/opt')
 
 // Commands used in install-utils.sh:
 def packageSharedCommands = ['bash', 'flock', 'sed', 'xmllint']
@@ -200,20 +188,39 @@ def rpmCommandFilter = {
     return rpmCapabilityMap.containsKey(it) ? rpmCapabilityMap[it] : it
 }
 
+// A lambda to figure out the best way to get the build number
+def findBuildNumber = {
+    return (!openGeeVersionFile.exists() || project.hasProperty('buildOpenGee')) ?
+        getOsPackageBuildFromOpenGeeVersion(GeeCommandLine.expand(
+                ["${projectDir}/../src/scons/getversion.py", "--long"],
+                "Failed to get Open GEE build!"
+            )) :
+        getOsPackageBuildFromOpenGeeVersionFile(openGeeVersionFile)
+}
 
+// A lambda to figure out the best way to get the version number
+def findVersionNumber = {
+    return (!openGeeVersionFile.exists() || project.hasProperty('buildOpenGee')) ?
+        getOsPackageVersionFromOpenGeeVersion(GeeCommandLine.expand(
+                ["${projectDir}/../src/scons/getversion.py", "--long"],
+                "Failed to get Open GEE version!"
+            )) :
+        getOsPackageVersionFromOpenGeeVersionFile(openGeeVersionFile)
+}
 
 ospackage {
-    version = openGeeVersion
-    release = "1.${rpmPlatformString}"
+    release = "${findBuildNumber()}.${rpmPlatformString}"
     distribution = rpmPlatformString
     packager = 'gee-oss@googlegroups.com'
     vendor = 'The OpenGEE Contributors'
     arch = X86_64
     os = LINUX
+    version = "${findVersionNumber()}"
 }
 
+logger.quiet("Open GEE version: ${ospackage.version}")
 
-// Build packages for all platforms by default:
+// Build packages for the current platform by default:
 defaultTasks 'osPackage'
 
 
@@ -233,23 +240,69 @@ task stageOpenGeeInstall(type: Exec, dependsOn: 'compileOpenGee') {
         "installdir=${stagedInstallDir}")
 }
 
+
 task openGeePostGisRpm(type: GeeRpm) {
+    mustRunAfter stageOpenGeeInstall
+
     packageName = 'opengee-postgis'
-    release = "1.${rpmPlatformString}"
-    version = '2.3.4'
+    release = ospackage.release
+    version = '2.3.9'
     user = 'root'
     permissionGroup = 'root'
     packageGroup = 'Application/Productivity'
     summary = 'Post GIS extension for Postgre SQL server used by Open GEE'
-    packageDescription = 'Post GIS extension for Postgre SQL server used by Open GEE.'
+    packageDescription = 'Post GIS extension for Postgre SQL server used by Open GEE'
     license = 'GPLv2'
     url = 'https://github.com/google/earthenterprise/tree/master/earth_enterprise/third_party/postgis'
     type = BINARY
     autoFindProvides = true
     autoFindRequires = true
-    requires('opengee-common', openGeeVersion, GREATER | EQUAL)
 
-    from (postGisInstallDir_opt) {
+    // "requires" is for runtime dependencies. "requiresPre" is for pre-install
+    // script dependencies. We need both because pre- and post-install scripts
+    // call Open GEE binaries, and they may fail if a different version of
+    // common libraries is installed.
+    // In this case, opengee-postgis doesn't have a pre- or post-install script
+    // to worry about, but we do need to make sure that opengee-common's
+    // pre-install script runs first.
+    requires('opengee-common', ospackage.version, GREATER | EQUAL)
+    requiresPre('opengee-common', ospackage.version, GREATER | EQUAL)
+
+    // The code in GeeRpm decides that this RPM should depend on proj, but
+    // it actually depends on proj-devel.
+    requires('proj-devel')
+
+    from (stagedInstallDir_postgis_opt) {
+        into new File(packageInstallRootDir, 'opt')
+    }
+
+    from (new File(stagedInstallDir_server_opt, 'google/lib')) {
+        // Include libpq, since it's used by postgis command-line utilities:
+        include 'libpq.*'
+
+        into packageInstallLibDir
+    }
+}
+
+task openGeePostGisDeb(type: GeeDeb) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = openGeePostGisRpm.packageName
+    release = "${findBuildNumber()}"
+    version = openGeePostGisRpm.version
+    user = openGeePostGisRpm.user
+    permissionGroup = openGeePostGisRpm.permissionGroup
+    packageGroup = 'misc'
+    summary = openGeePostGisRpm.summary
+    packageDescription = openGeePostGisRpm.packageDescription
+    license = openGeePostGisRpm.license
+    url = openGeePostGisRpm.url
+    type = BINARY
+
+    requires('opengee-common', ospackage.version, GREATER | EQUAL)
+    requires('proj-devel')
+
+    from (stagedInstallDir_postgis_opt) {
         into new File(packageInstallRootDir, 'opt')
     }
 
@@ -263,58 +316,42 @@ task openGeePostGisRpm(type: GeeRpm) {
 
 if (project.hasProperty('buildOpenGee')) {
     openGeePostGisRpm.dependsOn stageOpenGeeInstall
+    openGeePostGisDeb.dependsOn stageOpenGeeInstall
 }
 
 // Expands the `gevars.sh.template` and any other templates so they can be
 // used in the `common` package, and prefixed to install scripts for all the
 // various packages.
 task openGeeSharedFiles(type: Copy) {
-    from file('shared')
+    from file('shared/src')
     into file('build/shared')
 
-    def templateSuffix = '.template'
-    def stringStripSuffix = { value, suffix ->
-        return value.substring(0, value.length() - suffix.length())
-    }
-
-    eachFile {
-        if (it.getSourceName().endsWith(templateSuffix)) {
-            it.setName(stringStripSuffix(
-                it.getSourceName(), templateSuffix))
-
-            def templateDir = it.file.parent
-
-            def templateVariables = [
-                'openGeeVersion': openGeeVersion
-            ]
-
-            def expandTemplate = { text_or_file ->
-                def engine = new groovy.text.SimpleTemplateEngine()
-                def template = engine.createTemplate(text_or_file).make(templateVariables)
-
-                return template.toString()
-            }
-
-            templateVariables.put(
-                'expandTemplateFile',
-                { relative_path ->
-                    expandTemplate(new File(new File(templateDir), relative_path))
-                },
-            )
-
-            it.expand(templateVariables.clone())
-        }
-    }
+    CopySpecTemplates.expand(delegate,
+        [
+            'openGeeVersion': ospackage.version
+        ])
 }
 
-task openGeeCommonRpm(type: GeeRpm, dependsOn: openGeeSharedFiles) {
+task openGeeCommonInitScripts(type: Copy, dependsOn: openGeeSharedFiles) {
+    from(file('opengee-common/src'))
+    into "${buildDir}/opengee-common"
+
+    CopySpecTemplates.expand(delegate, [
+            'openGeeVersion': ospackage.version,
+            'project': project
+        ])
+}
+
+task openGeeCommonRpm(type: GeeRpm, dependsOn: openGeeCommonInitScripts) {
+    mustRunAfter stageOpenGeeInstall
+
     packageName = 'opengee-common'
-    release = "1.${rpmPlatformString}"
-    version = openGeeVersion
+    version = ospackage.version
+    release = ospackage.release
     user = 'root'
     permissionGroup = 'root'
     packageGroup = 'Application/Productivity'
-    summary = 'Third-party libraries bundled with Open GEE'
+    summary = 'Shared Open GEE code and third-party libraries bundled with Open GEE'
     packageDescription =
 '''Currently this package includes:
 
@@ -341,6 +378,7 @@ task openGeeCommonRpm(type: GeeRpm, dependsOn: openGeeSharedFiles) {
 * Setup Tools: PSF 2 or ZPL
 * Skia: Skia 5.1.2
 * Tornado: Apache 2.0
+* Various Open GEE Libraries
 '''
     license =
         'ASL 2.0 and ' +
@@ -356,6 +394,7 @@ task openGeeCommonRpm(type: GeeRpm, dependsOn: openGeeSharedFiles) {
         'OpenLDAP and ' +
         'OpenSSL and ' +
         'Skia 5.1.2'
+ 
     type = BINARY
     autoFindProvides = true
     autoFindRequires = true
@@ -366,16 +405,20 @@ task openGeeCommonRpm(type: GeeRpm, dependsOn: openGeeSharedFiles) {
     requires('chkconfig')
     requires('shadow-utils')
 
+    if ("${findBuildNumber()}.${rpmPlatformString}".contains('el6')) {
+        requires('python27')
+        requires('python27-lxml')
+    }
+
     requiresCommands(packageSharedCommands +
         ['cat', 'cut', 'getent', 'grep'])
 
     autoFindRequiresFilter = rpmCapabilityFilter
 
-    // Prefix variable definitions to all install scripts:
-    installUtils = file('build/shared/install-utils.sh')
-
-    preInstall = file('opengee-common/pre-install.sh')
-    postUninstall = file('opengee-common/post-uninstall.sh')
+    // Don't specify install scripts as single files.  It doesn't work for
+    // RPMs:
+    preInstall = file("${buildDir}/opengee-common/pre-install.sh")
+    postUninstall = file("${buildDir}/opengee-common/post-uninstall.sh")
 
     from (file('build/shared/gevars.sh')) {
         into new File(packageInstallRootDir, 'etc/init.d')
@@ -383,42 +426,113 @@ task openGeeCommonRpm(type: GeeRpm, dependsOn: openGeeSharedFiles) {
 
     from (stagedInstallDir_common_opt) {
         into new File(packageInstallRootDir, 'opt')
+
+        // Included in opengee-extra
+        exclude '**/doc'
+        exclude '**/man'
+        exclude '**/Readme.txt'
+        exclude '**/gehttpd/examples'
+        exclude 'google/lib/openjpeg-2.3' // Contains makefiles - not needed for production
+        exclude '**/protobuf/internal/*test*.py'
     }
 
     from (stagedInstallDir_common_user_magic) {
         into packageInstallRootDir
+
+        // Included in opengee-extra
+        exclude '**/ldap.conf.default'
     }
 
-    from(stagedInstallDir_manual) {
+    from(file('opengee-common/src/install')) {
         into packageInstallRootDir
     }
+}
 
-    from(file('opengee-common/install')) {
+task openGeeCommonDeb (type: GeeDeb, dependsOn: openGeeCommonInitScripts) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = openGeeCommonRpm.packageName
+    version = ospackage.version
+    release = ospackage.release
+    user = openGeeCommonRpm.user
+    permissionGroup = openGeeCommonRpm.permissionGroup
+    packageGroup = 'misc'
+    summary = openGeeCommonRpm.summary
+    packageDescription = openGeeCommonRpm.packageDescription
+    license = openGeeCommonRpm.license
+    priority = 'optional'
+
+    requires('flex')
+    requires('freeglut3')
+    requires('gettext')
+    requires('libc6')
+    requires('libfreetype6')
+    requires('libperl4-corelibs-perl')
+    requires('libpng12-0')
+    requires('libstdc++6')
+    requires('libtool')
+    requires('libxml2-utils')
+    requires('python-imaging')
+    requires('python-lxml')
+    requires('python-psycopg2')
+    requires('python-setuptools')
+    requires('python2.7')
+
+    // Use single files for install scripts.  Othewrise, OS Package wraps the
+    // code in extra statements.
+    preInstallFile file("${buildDir}/opengee-common/pre-install.sh")
+    postUninstallFile file("${buildDir}/opengee-common/post-uninstall.sh")
+
+    from (file('build/shared/gevars.sh')) {
+        into new File(packageInstallRootDir, 'etc/init.d')
+    }
+
+    from (stagedInstallDir_common_opt) {
+        into new File(packageInstallRootDir, 'opt')
+
+        // Included in opengee-extra
+        exclude '**/doc'
+        exclude '**/man'
+        exclude '**/Readme.txt'
+        exclude '**/gehttpd/examples'
+        exclude 'google/lib/openjpeg-2.3' // Contains makefiles - not needed for production
+        exclude '**/protobuf/internal/*test*.py'
+    }
+
+    from (stagedInstallDir_common_user_magic) {
+        into packageInstallRootDir
+
+        // Included in opengee-extra
+        exclude '**/ldap.conf.default'
+    }
+
+    from(file('opengee-common/src/install')) {
         into packageInstallRootDir
     }
 }
 
 if (project.hasProperty('buildOpenGee')) {
     openGeeCommonRpm.dependsOn stageOpenGeeInstall
+    openGeeCommonDeb.dependsOn stageOpenGeeInstall
 }
 
+task openGeeServerInitScripts(type: Copy, dependsOn: openGeeSharedFiles) {
+    from(file('opengee-server/src'))
+    into "${buildDir}/opengee-server"
 
-task openGeeCommonDeb (type: Deb) {
-    packageName = 'opengee-common'
-
-    from(stagedInstallDir_common) {
-        into packageInstallRootDir
-    }
-    from(stagedInstallDir_manual) {
-        into packageInstallRootDir
-    }
+    CopySpecTemplates.expand(delegate, [
+            'openGeeVersion': ospackage.version,
+            'stagedInstallDir_server_opt': stagedInstallDir_server_opt,
+            'project': project
+        ])
 }
 
-task openGeeServerRpm (type: GeeRpm, dependsOn: openGeeSharedFiles) {
-    requires('opengee-common', openGeeVersion, GREATER | EQUAL)
+task openGeeServerRpm(type: GeeRpm, dependsOn: openGeeServerInitScripts) {
+    mustRunAfter stageOpenGeeInstall
+
     packageName = 'opengee-server'
-    release = "1.${rpmPlatformString}"
-    version = openGeeVersion
+    version = ospackage.version
+    release = ospackage.release
     user = 'root'
     permissionGroup = 'root'
     packageGroup = 'Application/Productivity'
@@ -430,15 +544,20 @@ task openGeeServerRpm (type: GeeRpm, dependsOn: openGeeSharedFiles) {
     autoFindProvides = true
     autoFindRequires = true
 
-    requires('opengee-postgis', '2.3.4', GREATER | EQUAL)
+    // "requires" is for runtime dependencies. "requiresPre" is for pre-install
+    // script dependencies. We need both because pre- and post-install scripts
+    // call Open GEE binaries, and they may fail if a different version of
+    // common libraries is installed.
+    requires('opengee-common', ospackage.version, GREATER | EQUAL)
+    requiresPre('opengee-common', ospackage.version, GREATER | EQUAL)
+    requires('opengee-postgis', '2.3.9', GREATER | EQUAL)
+    requiresPre('opengee-postgis', '2.3.9', GREATER | EQUAL)
     conflicts('opengee-postgis', '2.0', LESS )
     conflicts('opengee-postgis', '2.4', GREATER | EQUAL)
-    requires('opengee-common', openGeeVersion, GREATER | EQUAL)
-    requiresPre('opengee-common', openGeeVersion, GREATER | EQUAL)
-    // `opengee-server` bundles Apache, and Apache requires utilities from the
-    // `initscripts` package:
-    requires('initscripts')
     requires('python-unittest2')
+    // The WMS Service requires PIL, which is not automatically detected:
+    requires('python-imaging')
+    requires('python-lxml')
 
     requiresCommands(
         packageSharedCommands +
@@ -452,16 +571,12 @@ task openGeeServerRpm (type: GeeRpm, dependsOn: openGeeSharedFiles) {
     autoFindRequiresFilter = rpmCapabilityFilter
     requiresCommandFilter = rpmCommandFilter
 
-    // Prefix variable definitions to all install scripts:
-    installUtils = file('build/shared/install-utils.sh')
-
-    // Add geresetpgdb script:
-    installUtils = file( new File( stagedInstallDir_server_opt, 'google/bin/gepgcommon' ) )
-
-    preInstall = file('opengee-server/pre-install.sh')
-    postInstall = file('opengee-server/post-install.sh')
-    preUninstall = file('opengee-server/pre-uninstall.sh')
-    postUninstall = file('opengee-server/post-uninstall.sh')
+    // Don't specify install scripts as single files.  It doesn't work for
+    // RPMs:
+    preInstall = file("${buildDir}/opengee-server/pre-install.sh")
+    postInstall = file("${buildDir}/opengee-server/post-install.sh")
+    preUninstall = file("${buildDir}/opengee-server/pre-uninstall.sh")
+    postUninstall = file("${buildDir}/opengee-server/post-uninstall.sh")
 
     directory('/opt/google/install', 0700)
     directory('/opt/google/gehttpd/logs', 0755)
@@ -470,9 +585,40 @@ task openGeeServerRpm (type: GeeRpm, dependsOn: openGeeSharedFiles) {
     directory('/var/opt/google/pgsql', 0700)
     directory('/var/opt/google/pgsql/logs')
 
+    filesMatching(
+        '/etc/init.d/geserver')
+    {
+        it.mode = 0755
+    }
+
+    // since these are "sourced" they cannot be exec...
+    filesMatching(
+        '/etc/profile.d/ge-server.csh')
+    {
+        it.mode = 0644
+    }
+    filesMatching(
+        '/etc/profile.d/ge-server.sh')
+    {
+        it.mode = 0644
+    }
+
     from(stagedInstallDir_server_opt) {
         // libpq is in the opengee-postgis package:
         exclude 'google/lib/libpq.*'
+
+        // Included in opengee-extra
+        exclude '**/manual'
+        exclude '**/search/plugin/example*'
+        exclude '**/search/plugin/custom*'
+        exclude '**/maps/example*'
+        exclude '**/original'
+        exclude '**/ExampleSearch.conf'
+        exclude '**/doc'
+        exclude '**/mod_wsgi-ge-extra.conf'
+        exclude '**/examplesearch.sql'
+        exclude '**/examplesearch_delete.sql'
+        exclude '**/readme.txt'
 
         into new File(packageInstallRootDir, 'opt')
     }
@@ -489,50 +635,138 @@ task openGeeServerRpm (type: GeeRpm, dependsOn: openGeeSharedFiles) {
         into new File(packageInstallRootDir, 'opt/google/share/geplaces')
     }
 
-    from(stagedInstallDir_server_searchexample) {
-        into new File(packageInstallRootDir, 'opt/google/share/searchexample')
+    // Create links
+    link('/opt/google/etc', '/etc/opt/google')
+    link('/opt/google/log', '/var/opt/google/log')
+    link('/opt/google/run', '/var/opt/google/run')
+}
+
+task openGeeServerDeb (type: GeeDeb, dependsOn: openGeeServerInitScripts) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = openGeeServerRpm.packageName
+    version = ospackage.version
+    release = ospackage.release
+    user = openGeeServerRpm.user
+    permissionGroup = openGeeServerRpm.permissionGroup
+    packageGroup = 'misc'
+    summary = openGeeServerRpm.summary
+    packageDescription = openGeeServerRpm.packageDescription
+    license = openGeeServerRpm.license
+    url = openGeeServerRpm.url
+
+    requires('opengee-common', ospackage.version, GREATER | EQUAL)
+    requires('opengee-postgis', '2.3.9', GREATER | EQUAL)
+    conflicts('opengee-postgis', '2.0', LESS )
+    conflicts('opengee-postgis', '2.4', GREATER | EQUAL)
+    requires('python-unittest2')
+    // The WMS Service requires PIL, which is not automatically detected:
+    requires('python-imaging')
+    requires('python-lxml')
+
+    requiresCommands(
+        packageSharedCommands +
+        [
+            // Install script commands:
+            'cat', 'chmod', 'chown', 'cut', 'find', 'getent', 'mkdir', 'python',
+            'sed', 'su', 'sudo'
+        ]
+    )
+
+    // Specify a single file for each install script.  Otherwise, OSPackage
+    // wraps the code in extra statements that, e.g., only run the
+    // post-install script on a new install, and not on upgrade:
+    preInstallFile file("${buildDir}/opengee-server/pre-install.sh")
+    postInstallFile file("${buildDir}/opengee-server/post-install.sh")
+    preUninstallFile file("${buildDir}/opengee-server/pre-uninstall.sh")
+    postUninstallFile file("${buildDir}/opengee-server/post-uninstall.sh")
+
+    directory('/opt/google/install', 0700)
+    directory('/opt/google/gehttpd/logs', 0755)
+    directory('/var/opt/google/run', 0775)
+    directory('/var/opt/google/log', 0775)
+    directory('/var/opt/google/pgsql', 0700)
+    directory('/var/opt/google/pgsql/logs')
+
+    filesMatching(
+        '/etc/init.d/geserver')
+    {
+        it.mode = 0755
     }
 
-    from(stagedInstallDir_server_apachesupport) {
+    // since these are "sourced" they cannot be exec...
+    filesMatching(
+        '/etc/profile.d/ge-server.csh')
+    {
+        it.mode = 0644
+    }
+    filesMatching(
+        '/etc/profile.d/ge-server.sh')
+    {
+        it.mode = 0644
+    }
+
+    from(stagedInstallDir_server_opt) {
+        // libpq is in the opengee-postgis package:
+        exclude 'google/lib/libpq.*'
+
+        // Included in opengee-extra
+        exclude '**/manual'
+        exclude '**/search/plugin/example*'
+        exclude '**/search/plugin/custom*'
+        exclude '**/maps/example*'
+        exclude '**/original'
+        exclude '**/ExampleSearch.conf'
+        exclude '**/doc'
+        exclude '**/mod_wsgi-ge-extra.conf'
+        exclude '**/examplesearch.sql'
+        exclude '**/examplesearch_delete.sql'
+        exclude '**/readme.txt'
+
+        into new File(packageInstallRootDir, 'opt')
+    }
+
+    from(stagedInstallDir_server_etc) {
+        into new File(packageInstallRootDir, 'etc')
+    }
+
+    from(stagedInstallDir_server_user_magic) {
         into packageInstallRootDir
     }
 
-    // Exclude files that go into the PostGIS RPM from this package:
-    eachFile {
-        if (new File(postGisInstallDir_opt, "../${it.path}").exists()) {
-            it.exclude()
-        }
+    from(stagedInstallDir_server_geplaces) {
+        into new File(packageInstallRootDir, 'opt/google/share/geplaces')
     }
 
     // Create links
     link('/opt/google/etc', '/etc/opt/google')
     link('/opt/google/log', '/var/opt/google/log')
     link('/opt/google/run', '/var/opt/google/run')
-    link('/opt/google/gehttpd/htdocs/shared_assets/docs', '/opt/google/share/doc')
 }
 
-task openGeeServerDeb (type: Deb) {
-    packageName = 'opengee-server'
-
-    requires('opengee-common', openGeeVersion, GREATER | EQUAL)
-
-    from(stagedInstallDir_server_etc) {
-        into new File(packageInstallRootDir, 'etc')
-    }
-
-    from(stagedInstallDir_server_opt) {
-        into new File(packageInstallRootDir, 'opt')
-    }
-
-    from(stagedInstallDir_server_apachesupport) {
-        into packageInstallRootDir
-    }
+if (project.hasProperty('buildOpenGee')) {
+    openGeeServerRpm.dependsOn stageOpenGeeInstall
+    openGeeServerDeb.dependsOn stageOpenGeeInstall
 }
 
-task openGeeFusionRpm (type: GeeRpm, dependsOn: openGeeSharedFiles) {
+
+task openGeeFusionInitScripts(type: Copy, dependsOn: openGeeSharedFiles) {
+    from(file('opengee-fusion/src'))
+    into "${buildDir}/opengee-fusion"
+
+    CopySpecTemplates.expand(delegate, [
+            'openGeeVersion': ospackage.version,
+            'project': project
+        ])
+}
+
+
+task openGeeFusionRpm (type: GeeRpm, dependsOn: openGeeFusionInitScripts) {
+    mustRunAfter stageOpenGeeInstall
+
     packageName = 'opengee-fusion'
-    release = "1.${rpmPlatformString}"
-    version = openGeeVersion
+    version = ospackage.version
+    release = ospackage.release
     user = 'root'
     permissionGroup = 'root'
     packageGroup = 'Application/Productivity'
@@ -549,115 +783,479 @@ built from raster, vector, and location properties data.
     autoFindProvides = true
     autoFindRequires = true
 
+    // "requires" is for runtime dependencies. "requiresPre" is for pre-install
+    // script dependencies. We need both because pre- and post-install scripts
+    // call Open GEE binaries, and they may fail if a different version of
+    // common libraries is installed.
+    requires('opengee-common', ospackage.version, GREATER | EQUAL)
+    requiresPre('opengee-common', ospackage.version, GREATER | EQUAL)
     requires('proj-devel') /* This dependency is not being picked up automatically by GeeRpm task */
-    requires('opengee-common', openGeeVersion, GREATER | EQUAL)
-
-
+    requires('/etc/rc.d/init.d/functions')
     requiresCommands(
         packageSharedCommands +
         [
             // Install script commands:
-            'cat', 'chcon', 'chmod', 'chown', 'cut', 'df', 'dirname', 'expr',
-            'find', 'getent', 'grep', 'hostname', 'mkdir', 'nproc',
-            'tr'
+            'cat', 'chcon', 'chmod', 'chown', 'cut', 'daemonize', 'df',
+            'dirname', 'expr', 'find', 'getent', 'grep', 'hostname', 'mkdir',
+            'nproc', 'tr'
         ]
     )
 
-    // Prefix variable definitions to all install scripts:
-    installUtils = file('build/shared/install-utils.sh')
+    // Don't specify install scripts as single files.  It doesn't work for
+    // RPMs:
+    preInstall = file("${buildDir}/opengee-fusion/pre-install.sh")
+    postInstall = file("${buildDir}/opengee-fusion/post-install.sh")
+    preUninstall = file("${buildDir}/opengee-fusion/pre-uninstall.sh")
+    postUninstall = file("${buildDir}/opengee-fusion/post-uninstall.sh")
 
-    preInstall = file('opengee-fusion/pre-install.sh')
-    postInstall = file('opengee-fusion/post-install.sh')
-    preUninstall = file('opengee-fusion/pre-uninstall.sh')
-    postUninstall = file('opengee-fusion/post-uninstall.sh')
-
-    directory('/opt/google/share/tutorials', 0755)
     directory('/var/opt/google/run', 0775)
     directory('/var/opt/google/log', 0775)
 
     filesMatching(
-        ['/etc/init.d/gefusion',
-         '/etc/profile.d/ge-fusion.csh',
-         '/etc/profile.d/ge-fusion.sh']
+        '/etc/init.d/gefusion'
     ) {
         it.mode = 0755
     }
 
+    // since these are "sourced" they cannot be exec...
+    filesMatching(
+        '/etc/profile.d/ge-fusion.csh'
+    ) {
+        it.mode = 0644
+    }
+    filesMatching(
+        '/etc/profile.d/ge-fusion.sh'
+    ) {
+        it.mode = 0644
+    }
+
     from(stagedInstallDir_fusion) {
         into packageInstallRootDir
+
+        // Included in opengee-extra
+        exclude '**/doc'
+        exclude '**/taskrules'
     }
 
-    from(stagedInstallDir_tutorial) {
-        into packageInstallRootDir
-    }
-
-    from(file('opengee-fusion/install')) {
+    from(file('opengee-fusion/src/install')) {
         into packageInstallRootDir
 
-        def templateSuffix = '.template'
-        def stringStripSuffix = { value, suffix ->
-            return value.substring(0, value.length() - suffix.length())
-        }
-
-        eachFile {
-            if (it.getSourceName().endsWith(templateSuffix)) {
-                it.setName(stringStripSuffix(
-                    it.getSourceName(), templateSuffix))
-
-                def templateDir = it.file.parent
-
-                def templateVariables = [
-                    'openGeeVersion': openGeeVersion
-                ]
-
-                def expandTemplate = { text_or_file ->
-                    def engine = new groovy.text.SimpleTemplateEngine()
-                    def template = engine.createTemplate(text_or_file).make(templateVariables)
-
-                    return template.toString()
-                }
-
-                templateVariables.put(
-                    'expandTemplateFile',
-                    { relative_path ->
-                        expandTemplate(new File(new File(templateDir), relative_path))
-                    },
-                )
-
-                it.expand(templateVariables.clone())
-            }
-        }
+        CopySpecTemplates.expand(delegate, [
+                'openGeeVersion': ospackage.version
+            ])
     }
 
     // Create links
     link('/opt/google/etc', '/etc/opt/google')
     link('/opt/google/log', '/var/opt/google/log')
     link('/opt/google/run', '/var/opt/google/run')
-    link('/opt/google/gehttpd/htdocs/shared_assets/docs', '/opt/google/share/doc')
 }
 
-task openGeeFusionDeb (type: Deb) {
-    packageName = 'opengee-fusion'
-    requires('opengee-common', openGeeVersion, GREATER | EQUAL)
+task openGeeFusionDeb (type: GeeDeb, dependsOn: openGeeFusionInitScripts) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = openGeeFusionRpm.packageName
+    version = ospackage.version
+    release = ospackage.release
+    user = openGeeFusionRpm.user
+    permissionGroup = openGeeFusionRpm.permissionGroup
+    packageGroup = 'misc'
+    summary = openGeeFusionRpm.summary
+    packageDescription = openGeeFusionRpm.packageDescription
+    license = openGeeFusionRpm.license
+    url = openGeeFusionRpm.url
+    type = BINARY
+
+    requires('opengee-common', ospackage.version, GREATER | EQUAL)
+    requires('dpkg')
+    requires('lsb-base')
+
+    // Specify a single file for each install script.  Otherwise, OSPackage
+    // wraps the code in extra statements that, e.g., only run the
+    // post-install script on a new install, and not on upgrade:
+    preInstallFile file("${buildDir}/opengee-fusion/pre-install.sh")
+    postInstallFile file("${buildDir}/opengee-fusion/post-install.sh")
+    preUninstallFile file("${buildDir}/opengee-fusion/pre-uninstall.sh")
+    postUninstallFile file("${buildDir}/opengee-fusion/post-uninstall.sh")
+
+    directory('/var/opt/google/run', 0775)
+    directory('/var/opt/google/log', 0775)
+
+    filesMatching(
+        '/etc/init.d/gefusion'
+    ) {
+        it.mode = 0755
+    }
+
+    // since these are "sourced" they cannot be exec...
+    filesMatching(
+        '/etc/profile.d/ge-fusion.csh'
+    ) {
+        it.mode = 0644
+    }
+    filesMatching(
+        '/etc/profile.d/ge-fusion.sh'
+    ) {
+        it.mode = 0644
+    }
 
     from(stagedInstallDir_fusion) {
         into packageInstallRootDir
+
+        // Included in opengee-extra
+        exclude '**/doc'
+        exclude '**/taskrules'
     }
+
+    from(file('opengee-fusion/src/install')) {
+        into packageInstallRootDir
+
+        CopySpecTemplates.expand(delegate, [
+                'openGeeVersion': ospackage.version
+            ])
+    }
+
+    // Create links
+    link('/opt/google/etc', '/etc/opt/google')
+    link('/opt/google/log', '/var/opt/google/log')
+    link('/opt/google/run', '/var/opt/google/run')
+}
+
+if (project.hasProperty('buildOpenGee')) {
+    openGeeFusionRpm.dependsOn stageOpenGeeInstall
+    openGeeFusionDeb.dependsOn stageOpenGeeInstall
+}
+
+task openGeeExtraInitScripts(type: Copy, dependsOn: openGeeSharedFiles) {
+    from(file('opengee-extra/src'))
+    into "${buildDir}/opengee-extra"
+
+    CopySpecTemplates.expand(delegate, [
+            'openGeeVersion': ospackage.version,
+            'openGeeRelease': ospackage.release,
+            'project': project
+        ])
+}
+
+task openGeeExtraRpm(type: GeeRpm, dependsOn: openGeeExtraInitScripts) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = 'opengee-extra'
+    version = ospackage.version
+    release = ospackage.release
+    user = 'root'
+    permissionGroup = 'root'
+    packageGroup = 'Application/Productivity'
+    summary = 'Documentation, samples, examples, and tutorials for Open Google Earth Enterprise'
+    packageDescription =
+        'Documentation, samples, examples, and tutorials for Open Google Earth Enterprise'
+    license = 'ASL 2.0'
+    url = 'https://github.com/google/earthenterprise'
+    autoFindProvides = true
+    autoFindRequires = true
+
+    autoFindRequiresFilter = rpmCapabilityFilter
+    requiresCommandFilter = rpmCommandFilter
+
+    // This package contains files that were in opengee-server and
+    // opengee-fusion in versions 5.3.4.1 and before.
+    conflicts('opengee-server', "5.3.4.1", LESS | EQUAL)
+    conflicts('opengee-fusion', "5.3.4.1", LESS | EQUAL)
+
+    postInstall = file("${buildDir}/opengee-extra/post-install.sh")
+    preUninstall = file("${buildDir}/opengee-extra/pre-uninstall.sh")
+
+    // -----------------------------------------------------------------------
+    // Common Extras
+    // -----------------------------------------------------------------------
+
+    from (stagedInstallDir_common_opt) {
+        into new File(packageInstallRootDir, 'opt')
+        include '**/doc/**'
+        include '**/man/**'
+        include '**/Readme.txt'
+        include '**/gehttpd/examples/**'
+    }
+
+    from(stagedInstallDir_manual) {
+        into packageInstallRootDir
+    }
+
+    from (stagedInstallDir_common_user_magic) {
+        into packageInstallRootDir
+        include '**/ldap.conf.default'
+    }
+
+    filesMatching(
+        '/opt/google/share/searchexample/searchexample'
+    ) {
+        it.mode = 0755
+    }
+
+
+    // -----------------------------------------------------------------------
+    // Server Extras
+    // -----------------------------------------------------------------------
+
+    from(stagedInstallDir_server_opt) {
+        include '**/manual/**'
+        include '**/search/plugin/example*'
+        include '**/search/plugin/custom*'
+        include '**/maps/example*'
+        include '**/original/**'
+        include '**/ExampleSearch.conf'
+        include '**/doc/**'
+        include '**/mod_wsgi-ge-extra.conf'
+        include '**/examplesearch.sql'
+        include '**/examplesearch_delete.sql'
+        include '**/readme.txt'
+
+        into new File(packageInstallRootDir, 'opt')
+    }
+
+    from(stagedInstallDir_server_searchexample) {
+        into new File(packageInstallRootDir, 'opt/google/share/searchexample')
+    }
+
+    link('/opt/google/gehttpd/htdocs/shared_assets/docs', '/opt/google/share/doc')
+
+    // -----------------------------------------------------------------------
+    // Fusion Extras
+    // -----------------------------------------------------------------------
+
+    directory('/opt/google/share/tutorials', 0755)
+
+    from(stagedInstallDir_fusion) {
+        into packageInstallRootDir
+        include '**/doc/**'
+        include '**/taskrules/**'
+    }
+
+    from(stagedInstallDir_tutorial) {
+        into packageInstallRootDir
+    }
+
+    filesMatching(
+        '/opt/google/share/tutorials/fusion/download_tutorial.sh'
+    ) {
+        it.mode = 0755
+    }
+}
+
+task openGeeExtraDeb(type: GeeDeb, dependsOn: openGeeExtraInitScripts) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = openGeeExtraRpm.packageName
+    version = ospackage.version
+    release = ospackage.release
+    user = openGeeExtraRpm.user
+    permissionGroup = openGeeExtraRpm.permissionGroup
+    packageGroup = openGeeExtraRpm.packageGroup
+    summary = openGeeExtraRpm.summary
+    packageDescription = openGeeExtraRpm.packageDescription
+    license = openGeeExtraRpm.license
+    url = openGeeExtraRpm.url
+
+    // This package contains files that were in opengee-server and
+    // opengee-fusion in versions 5.3.4.1 and before.
+    conflicts('opengee-server', "5.3.4.1", LESS | EQUAL)
+    conflicts('opengee-fusion', "5.3.4.1", LESS | EQUAL)
+
+    postInstallFile file("${buildDir}/opengee-extra/post-install.sh")
+    preUninstallFile file("${buildDir}/opengee-extra/pre-uninstall.sh")
+
+    // -----------------------------------------------------------------------
+    // Common Extras
+    // -----------------------------------------------------------------------
+
+    from (stagedInstallDir_common_opt) {
+        into new File(packageInstallRootDir, 'opt')
+        include '**/doc/**'
+        include '**/man/**'
+        include '**/Readme.txt'
+        include '**/gehttpd/examples/**'
+    }
+
+    from(stagedInstallDir_manual) {
+        into packageInstallRootDir
+    }
+
+    from (stagedInstallDir_common_user_magic) {
+        into packageInstallRootDir
+        include '**/ldap.conf.default'
+    }
+
+    filesMatching(
+        '/opt/google/share/searchexample/searchexample'
+    ) {
+        it.mode = 0755
+    }
+
+
+    // -----------------------------------------------------------------------
+    // Server Extras
+    // -----------------------------------------------------------------------
+
+    from(stagedInstallDir_server_opt) {
+        include '**/manual/**'
+        include '**/search/plugin/example*'
+        include '**/search/plugin/custom*'
+        include '**/maps/example*'
+        include '**/original/**'
+        include '**/ExampleSearch.conf'
+        include '**/doc/**'
+        include '**/mod_wsgi-ge-extra.conf'
+        include '**/examplesearch.sql'
+        include '**/examplesearch_delete.sql'
+        include '**/readme.txt'
+
+        into new File(packageInstallRootDir, 'opt')
+    }
+
+    from(stagedInstallDir_server_searchexample) {
+        into new File(packageInstallRootDir, 'opt/google/share/searchexample')
+    }
+
+    link('/opt/google/gehttpd/htdocs/shared_assets/docs', '/opt/google/share/doc')
+
+    // -----------------------------------------------------------------------
+    // Fusion Extras
+    // -----------------------------------------------------------------------
+
+    directory('/opt/google/share/tutorials', 0755)
+
+    from(stagedInstallDir_fusion) {
+        into packageInstallRootDir
+        include '**/doc/**'
+        include '**/taskrules/**'
+    }
+
+    from(stagedInstallDir_tutorial) {
+        into packageInstallRootDir
+    }
+
+    filesMatching(
+        '/opt/google/share/tutorials/fusion/download_tutorial.sh'
+    ) {
+        it.mode = 0755
+    }
+}
+
+if (project.hasProperty('buildOpenGee')) {
+    openGeeExtraRpm.dependsOn stageOpenGeeInstall
+    openGeeExtraDeb.dependsOn stageOpenGeeInstall
+}
+
+// Convenience package that installs opengee-server + opengee-extra
+task openGeeFullServerRpm (type: GeeRpm) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = 'opengee-full-server'
+    version = ospackage.version
+    release = ospackage.release
+    user = 'root'
+    permissionGroup = 'root'
+    packageGroup = 'Application/Productivity'
+    summary = 'Full Open Google Earth Enterprise 3D globe and 2D map tile server'
+    packageDescription =
+        'Full install of the OpenGEE Server Daemons (Apache, PostGRE SQL) and command-line tools.'
+
+    license = 'ASL 2.0'
+    url = 'https://github.com/google/earthenterprise'
+    type = BINARY
+    autoFindProvides = true
+    autoFindRequires = true
+
+    requires('opengee-server', ospackage.version, GREATER | EQUAL)
+    requires('opengee-extra', ospackage.version, GREATER | EQUAL)
+}
+
+task openGeeFullServerDeb (type: GeeDeb) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = openGeeFullServerRpm.packageName
+    version = ospackage.version
+    release = ospackage.release
+    user = openGeeFullServerRpm.user
+    permissionGroup = openGeeFullServerRpm.permissionGroup
+    packageGroup = openGeeFullServerRpm.packageGroup
+    summary = openGeeFullServerRpm.summary
+    packageDescription = openGeeFullServerRpm.packageDescription
+    license = openGeeFullServerRpm.license
+    url = openGeeFullServerRpm.url
+    type = BINARY
+
+    requires('opengee-server', ospackage.version, GREATER | EQUAL)
+    requires('opengee-extra', ospackage.version, GREATER | EQUAL)
+}
+
+if (project.hasProperty('buildOpenGee')) {
+    openGeeFullServerRpm.dependsOn stageOpenGeeInstall
+    openGeeFullServerDeb.dependsOn stageOpenGeeInstall
+}
+
+// Convenience package that installs opengee-fusion + opengee-extra
+task openGeeFullFusionRpm (type: GeeRpm) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = 'opengee-full-fusion'
+    version = ospackage.version
+    release = ospackage.release
+    user = 'root'
+    permissionGroup = 'root'
+    packageGroup = 'Application/Productivity'
+    summary = 'Full Open GEE Fusion UI and Command-line Utilities'
+    packageDescription ='Full install of the Open GEE Fusion UI and Command-line Utilities'
+
+    license = 'ASL 2.0'
+    url = 'https://github.com/google/earthenterprise'
+    type = BINARY
+    autoFindProvides = true
+    autoFindRequires = true
+
+    requires('opengee-fusion', ospackage.version, GREATER | EQUAL)
+    requires('opengee-extra', ospackage.version, GREATER | EQUAL)
+}
+
+task openGeeFullFusionDeb (type: GeeDeb) {
+    mustRunAfter stageOpenGeeInstall
+
+    packageName = openGeeFullFusionRpm.packageName
+    version = ospackage.version
+    release = ospackage.release
+    user = openGeeFullFusionRpm.user
+    permissionGroup = openGeeFullFusionRpm.permissionGroup
+    packageGroup = openGeeFullFusionRpm.packageGroup
+    summary = openGeeFullFusionRpm.summary
+    packageDescription = openGeeFullFusionRpm.packageDescription
+    license = openGeeFullFusionRpm.license
+    url = openGeeFullFusionRpm.url
+    type = BINARY
+
+    requires('opengee-fusion', ospackage.version, GREATER | EQUAL)
+    requires('opengee-extra', ospackage.version, GREATER | EQUAL)
+}
+
+if (project.hasProperty('buildOpenGee')) {
+    openGeeFullFusionRpm.dependsOn stageOpenGeeInstall
+    openGeeFullFusionDeb.dependsOn stageOpenGeeInstall
 }
 
 task openGeeRpms(
     dependsOn: [
-        'openGeeServerRpm', 'openGeeFusionRpm', 'openGeeCommonRpm',
-        'openGeePostGisRpm'
+        'openGeeServerRpm', 'openGeeFullServerRpm',
+        'openGeeFusionRpm', 'openGeeFullFusionRpm',
+        'openGeeCommonRpm', 'openGeePostGisRpm', 'openGeeExtraRpm'
     ])
 
 task openGeeDebs(
-    dependsOn: ['openGeeServerDeb', 'openGeeFusionDeb', 'openGeeCommonDeb'])
+    dependsOn: [
+        'openGeeServerDeb', 'openGeeFullServerDeb',
+        'openGeeFusionDeb', 'openGeeFullFusionDeb',
+        'openGeeCommonDeb', 'openGeePostGisDeb', 'openGeeExtraDeb'
+    ])
 
-task osPackage(dependsOn: ['openGeeRpms', 'openGeeDebs'])
-
-// Mostly for documentation purposes.  You need to comment out the rest of the
-// Gradle file to run this task:
-task wrapper(type: Wrapper) {
-    gradleVersion = '4.2'
+task osPackage(dependsOn: org.opengee.os.Platform.osId == 'ubuntu' ? openGeeDebs : openGeeRpms) {
+    group = 'Packaging'
+    description = "Build ${org.opengee.os.Platform.osId == 'ubuntu' ? 'Deb' : 'RPM'} packages from on OpenGEE staged install."
 }

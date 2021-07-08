@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +34,7 @@ class gstRegistry {
 
     ~Group() {
       delete [] _name;
-      uint ii;
+      unsigned int ii;
       for (ii = 0; ii < _tags.length(); ++ii) {
         gstValue* t = _tags[ii];
         delete t;
@@ -71,34 +72,34 @@ class gstRegistry {
     }
 
     gstValue* removeTag(const char* name) {
-      for (uint ii = 0; ii < _tags.length(); ++ii) {
+      for (unsigned int ii = 0; ii < _tags.length(); ++ii) {
         if (!strcmp(_tags[ii]->Name(), name)) {
           return _tags.removeIndex(ii);
         }
       }
-      return NULL;
+      return nullptr;
     }
 
     khArray<gstValue*>* tags() { return &_tags; }
 
     gstValue* findTag(const char* n) const {
       gstValue** t = _tags.array();
-      for (uint ii = 0; ii < _tags.length(); ++ii, ++t) {
+      for (unsigned int ii = 0; ii < _tags.length(); ++ii, ++t) {
         if (!strcmpSafe((*t)->Name(), n)) {
           return *t;
         }
       }
-      return NULL;
+      return nullptr;
     }
 
     Group* findGroup(const char* n) const {
       Group** g = _groups.array();
-      for (uint ii = 0; ii < _groups.length(); ++ii, ++g) {
+      for (unsigned int ii = 0; ii < _groups.length(); ++ii, ++g) {
         if (!strcmpSafe((*g)->name(), n)) {
           return *g;
         }
       }
-      return NULL;
+      return nullptr;
     }
 
     Group* removeGroup(Group* grp) {
@@ -128,25 +129,25 @@ class gstRegistry {
     bool _altered;
   };
 
-  gstRegistry(const char* n = NULL);
-  ~gstRegistry() ;
+  gstRegistry(const char* n = nullptr);
+  ~gstRegistry();
+  gstRegistry(const gstRegistry&) = delete;
+  gstRegistry(gstRegistry&&) = delete;
+  gstRegistry& operator=(const gstRegistry&) = delete;
+  gstRegistry& operator=(gstRegistry&&) = delete;
 
   gstStatus load();
-  //gstStatus load(const char* buf, int buflen);
-  //gstStatus save();
-  //gstStatus save(char** buf, int &buflen);
 
   Group* findGroup(const char* g) { return _root->findGroup(g); }
 
-  void setVal(const char*, const char*, uint32 type = gstTagString);
-  //const char* getVal(const char*, ...);
+  void setVal(const char*, const char*, std::uint32_t type = gstTagString);
 
-  gstValue* locateTag(const char* tag, int create = 0, uint32 type = gstTagString);
+  gstValue* locateTag(const char* tag, int create = 0, std::uint32_t type = gstTagString);
   Group* locateGroup(const char* tag, int create = 0);
 
-  uint numGroups(const char*, ...);
+  unsigned int numGroups(const char*, ...);
 
-  uint numTags(const char*, ...);
+  unsigned int numTags(const char*, ...);
 
   bool isAltered() { return _root->isAltered(); }
 
@@ -160,8 +161,6 @@ class gstRegistry {
   QString fullPath(Group* g);
 
  private:
-  //gstStatus saveGroup(Group* group, uint depth);
-  //int putLine();
 
   gstStatus parse();
   char* nextLine();

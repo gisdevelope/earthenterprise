@@ -38,7 +38,7 @@ class VectorProductAssetVersionImpl {
 namespace {
 void GetProviderFromMeta(VectorProductConfig &config, khMetaData &meta) {
   if (config.provider_id_ == 0) {
-    std::string providerkey = meta.GetValue("provider");
+    std::string providerkey = meta.GetValue("provider").toUtf8().constData();
     if (!providerkey.empty()) {
       config.provider_id_ = gstProviderSet::LoadAndGetIdFromKey(providerkey);
       meta.Erase("provider");
@@ -90,17 +90,20 @@ VectorProductAssetImplD::HandleImportRequest(const VectorProductImportRequest &r
 
   // find/make our target asset
   MutableVectorProductAssetD asset =
-    VectorProductFactory::FindMake(assetname,
-                                   std::vector<std::string>(),
-                                   req.meta,
-                                   req.config);
+    FindMake<VectorProductType>
+        (assetname,
+         std::vector<SharedString>(),
+         req.meta,
+         req.config);
   if (!asset) {
-    throw khException(kh::tr("Unable to create vector asset ") + assetname);
+    std::string msg { kh::tr("Unable to create vector asset ").toUtf8().constData() };
+    msg += assetname;
+    throw khException(msg.c_str());
   }
 
   // Get our source asset
   MutableAssetVersionD source =
-    SourceFactory::ReuseOrMakeAndUpdateSubAsset(asset->GetRef(),
+    ReuseOrMakeAndUpdateSubAsset<SourceType>(asset->GetRef(),
                                                 AssetDefs::Vector,
                                                 "source",
                                                 req.meta,
@@ -136,8 +139,11 @@ VectorProductAssetVersionImplD::DoSubmitTask(void)
     std::string filelist = WorkingFilename("files.list");
     khEnsureParentDir(filelist);
     FILE *FILELIST = fopen(filelist.c_str(), "w");
-    if (!FILELIST)
-      throw khErrnoException(kh::tr("Unable to write ") + filelist);
+    if (!FILELIST) {
+      std::string msg { kh::tr("Unable to write ").toUtf8().constData() };
+      msg += filelist;
+      throw khErrnoException(msg.c_str());
+    }
     {
       // guarantee that the file will be closed (even in case of exception)
       khFILECloser fileCloser(FILELIST);

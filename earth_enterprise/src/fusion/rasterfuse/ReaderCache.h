@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +51,11 @@ class FFIORasterReaderCache
       reader->Close();
     }
 
+    // determine amount of memory used by FFIORasterReaderCache
+    std::uint64_t GetSize() {
+      return sizeof(reader);
+    }
+
     inline void
     ReadTile(const khTileAddr &addr, TileType &dest) const {
       if (!reader->FindReadTile(addr, dest)) {
@@ -64,7 +70,7 @@ class FFIORasterReaderCache
   mutable khCache<const RawReader*, CachedReader> cache;
 
  public:
-  inline FFIORasterReaderCache(uint cacheSize) : cache(cacheSize) { }
+  inline FFIORasterReaderCache(unsigned int cacheSize) : cache(cacheSize, "reader") { }
 
   inline void
   ReadTile(const RawReader *reader, const khTileAddr &addr,

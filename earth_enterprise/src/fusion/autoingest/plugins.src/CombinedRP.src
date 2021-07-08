@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +29,7 @@
 class CombinedRPAssetVersionImpl {
  public:
   khExtents<double> GetExtents(void) const;
-  uint              GetMaxLevel(void) const;
+  unsigned int              GetMaxLevel(void) const;
   std::string       PreviewRef(void) const;
 };
 
@@ -38,7 +39,7 @@ class CombinedRPAssetVersionImpl {
 khExtents<double>
 CombinedRPAssetVersionImpl::GetExtents(void) const
 {
-  std::string extents = meta.GetValue("extents");
+  std::string extents = meta.GetValue("extents").toUtf8().constData();
   std::vector<std::string> coords;
   // split out coords (N,S,E,W)
   split(extents, ",", back_inserter(coords));
@@ -52,20 +53,21 @@ CombinedRPAssetVersionImpl::GetExtents(void) const
 
     return khExtents<double>(NSEWOrder, N, S, E, W);
   }
-
-  throw khException(kh::tr("Unable to get extents for ")
-                    + GetRef());
+  std::string msg { kh::tr("Unable to get extents for ").toUtf8().constData() };
+  msg += GetRef();
+  throw khException(msg);
 }
 
 
 uint
 CombinedRPAssetVersionImpl::GetMaxLevel(void) const
 {
-  uint prodMaxLevel = 0;
-  FromString(meta.GetValue("maxlevel"), prodMaxLevel);
+  unsigned int prodMaxLevel = 0;
+  FromString(meta.GetValue("maxlevel").toUtf8().constData(), prodMaxLevel);
   if (!prodMaxLevel) {
-    throw khException(kh::tr("Unable to get maxlevel for ")
-                      + GetRef());
+    std::string msg = kh::tr("Unable to get maxlevel for ").toUtf8().constData();
+    msg += GetRef();
+    throw khException(msg);
   }
   return prodMaxLevel;
 }
@@ -84,10 +86,10 @@ CombinedRPAssetVersionImpl::PreviewRef(void) const
 
 // ===== CombinedRPAssetD.h =====
 class CombinedRPAssetVersionImplD {
- protected:
-  virtual void OnStateChange(AssetDefs::State newstate,
-                             AssetDefs::State oldstate);
-  virtual void ChildrenToCancel(std::vector<AssetVersion> &out);
+public:
+  virtual AssetDefs::State OnStateChange(AssetDefs::State newstate,
+                                         AssetDefs::State oldstate) override;
+  virtual void DependentChildren(std::vector<SharedString> &out) const override;
 };
 
 
@@ -101,7 +103,7 @@ class CombinedRPAssetVersionImplD {
 #include <khException.h>
 
 
-void
+AssetDefs::State
 CombinedRPAssetVersionImplD::OnStateChange(AssetDefs::State newstate,
                                               AssetDefs::State oldstate)
 {
@@ -120,11 +122,12 @@ CombinedRPAssetVersionImplD::OnStateChange(AssetDefs::State newstate,
       meta.SetValue("minlevel", rptr->minLevel());
     }
   }
+  return state;
 }
 
 
 void
-CombinedRPAssetVersionImplD::ChildrenToCancel(std::vector<AssetVersion> &out)
+CombinedRPAssetVersionImplD::DependentChildren(std::vector<SharedString> &out) const
 {
   if (config.source_is_product_) {
     // nothing to cancel in this case
@@ -139,7 +142,7 @@ CombinedRPAssetVersionImplD::ChildrenToCancel(std::vector<AssetVersion> &out)
   AssetVersion krp(children[0]);
   AssetVersion source(krp->inputs[0]);
   while (source->subtype != "Source") {
-    out.push_back(source);
+    out.push_back(source->GetRef());
     source = source->inputs[0];
   }
 
@@ -149,7 +152,7 @@ CombinedRPAssetVersionImplD::ChildrenToCancel(std::vector<AssetVersion> &out)
     AssetVersion krmp(children[1]);
     AssetVersion maskgen(krmp->inputs[1]);
     if (maskgen->subtype != "Source") {
-      out.push_back(maskgen);
+      out.push_back(maskgen->GetRef());
     }
   }
 }
@@ -177,9 +180,9 @@ CombinedRPAssetVersionImplD::UpdateChildren(void)
 
     // see if I need to khvr the source
     if (config.need_khvr_) {
-      source = MosaicFactory::ReuseOrMakeAndUpdateSubAsset
+      source = ReuseOrMakeAndUpdateSubAsset<MosaicType>
                (assetRef, type, "mosaic",
-                makevec1(source->GetRef()),
+                makevec1<SharedString>(source->GetRef()),
                 khMetaData(),
                 config.khvr_config_,
                 makevec1(source));
@@ -187,9 +190,9 @@ CombinedRPAssetVersionImplD::UpdateChildren(void)
 
     // tell my raster child about the new source & have it update itself
     MutableKRPAssetVersionD krp2 =
-      KRPFactory::ReuseOrMakeAndUpdateSubAsset
+      ReuseOrMakeAndUpdateSubAsset<KRPType>
       (assetRef, type, "product",
-       makevec1(source->GetRef()),
+       makevec1<SharedString>(source->GetRef()),
        khMetaData(),
        config.krp_config_,
        makevec1(source));
@@ -215,9 +218,9 @@ CombinedRPAssetVersionImplD::UpdateChildren(void)
         }
       } else {
         krmp =
-          KRMPFactory::ReuseOrMakeAndUpdateSubAsset
+          ReuseOrMakeAndUpdateSubAsset<KRMPType>
           (assetRef, type, "maskproduct",
-           makevec2(krp->GetRef(), inputs[1]),
+           makevec2<SharedString>(krp->GetRef(), inputs[1]),
            khMetaData(),
            KRMPConfig(config.krp_config_.overridesrs,
                       config.krp_config_.useMercatorProjection),
@@ -229,18 +232,18 @@ CombinedRPAssetVersionImplD::UpdateChildren(void)
     case CombinedRPConfig::AutoMask: {
       // tell my maskgen child about the new raster, have it update
       AssetVersion maskgen =
-        MaskgenFactory::ReuseOrMakeAndUpdateSubAsset
+        ReuseOrMakeAndUpdateSubAsset<MaskgenType>
         (assetRef, type, "maskgen",
-         makevec1(krp->GetRef()),
+         makevec1<SharedString>(krp->GetRef()),
          khMetaData(),
          config.maskgen_config_,
          makevec1(AssetVersion(krp)));
 
       // tell my KRMP child about the new raster & mask
       MutableAssetVersionD krmp =
-        KRMPFactory::ReuseOrMakeAndUpdateSubAsset
+        ReuseOrMakeAndUpdateSubAsset<KRMPType>
         (assetRef, type, "maskproduct",
-         makevec2(krp->GetRef(), maskgen->GetRef()),
+         makevec2<SharedString>(krp->GetRef(), maskgen->GetRef()),
          khMetaData(),
          KRMPConfig("", config.krp_config_.useMercatorProjection),
          makevec2(AssetVersion(krp), maskgen));

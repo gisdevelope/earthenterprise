@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +19,11 @@
 #define GEO_EARTH_ENTERPRISE_SRC_COMMON_KHREFCOUNTER_H_
 
 #include <assert.h>
-
-#include "common/khTypes.h"
+//#include "common/khTypes.h"
+#include <cstdint>
 #include "common/khGuard.h"
 #include "common/khThreadingPolicy.h"
+#include "common/khCppStd.h"
 
 
 // ****************************************************************************
@@ -82,7 +84,8 @@ class khRefGuard {
   }
 
   // expose refcount function from my shared object
-  inline uint32 refcount(void) const  { return ptr ? ptr->refcount() : 0; }
+  inline std::uint32_t refcount(void) const  { return ptr ? ptr->refcount() : 0; }
+  inline std::uint32_t use_count(void) const { return refcount(); }
 
   inline void release(void) {
     if (ptr) {
@@ -111,6 +114,20 @@ class khRefGuard {
     ptr = o.ptr;
     return *this;
   }
+
+#ifdef GEE_HAS_MOVE
+  // move assignment & copy constructor
+  khRefGuard(khRefGuard &&o) noexcept : ptr(o.ptr) { o.ptr = nullptr; }
+  khRefGuard& operator=(khRefGuard &&o) noexcept {
+    if (this != &o) {
+      T* ptr_ = ptr;
+      ptr = o.ptr;
+      o.ptr = nullptr;
+      if (ptr_) ptr_->unref();
+    }
+    return *this;
+  }
+#endif // GEE_HAS_MOVE
 
   // 2 assignments is cheaper than 2 mutex locks. So in case you don't care
   // about b, a.swap(b) is faster than a = b
@@ -159,6 +176,7 @@ template <class T> inline khRefGuard<T> khRefGuardFromThis_(T *thisobj);
 #define AnotherRefGuardFromRaw(x) khRefGuardFromThis_(x)
 
 
+
 // ****************************************************************************
 // ***  khRefCounter
 // ***
@@ -173,14 +191,34 @@ template <class T> inline khRefGuard<T> khRefGuardFromThis_(T *thisobj);
 template <class ThreadPolicy>
 class khRefCounterImpl : public ThreadPolicy::MutexHolder {
  private:
-  mutable uint32 refcount_;
-
-  // private and unimplemented
-  // classes derived from khRefCounterImpl are meant to be shared, not copied
-  khRefCounterImpl(const khRefCounterImpl &);
-  khRefCounterImpl & operator=(const khRefCounterImpl&);
+  mutable std::uint32_t refcount_;
 
  protected:
+  // protected and implemented to do nothing
+  // classes derived from khRefCounterImpl can decide if they want to support
+  // copy/move operations on their state but this base class state should
+  // do nothing during these operations as this state is tied to memory management
+  // and not really object state.
+  // NOTE: should move to using shared_ptr<> and make_shared<> when we have C++11
+  // as this gives nearly all the same bennifets without these oddities.
+  khRefCounterImpl(const khRefCounterImpl &) : refcount_(1) {
+    // intentionally left empty.  The right thing to do is nothing.
+  }
+  khRefCounterImpl & operator=(const khRefCounterImpl&) {
+    // intentionally left empty.  The right thing to do is nothing.
+    return *this;
+  }
+
+#if GEE_HAS_MOVE
+  khRefCounterImpl(khRefCounterImpl &&) noexcept : refcount_(1) {
+    // intentionally left empty.  The right thing to do is nothing.
+  }
+  khRefCounterImpl & operator=(khRefCounterImpl&&) noexcept {
+    // intentionally left empty.  The right thing to do is nothing.
+    return *this;
+  }
+#endif // GEE_HAS_MOVE
+
   inline khRefCounterImpl(void) : refcount_(1) { }
 
   // virtual to force my derivations to be virtual this is needed since this
@@ -215,9 +253,13 @@ class khRefCounterImpl : public ThreadPolicy::MutexHolder {
   }
 
  public:
-  uint32 refcount(void) const {
+  std::uint32_t refcount(void) const {
     LockGuard guard(this);
     return refcount_;
+  }
+
+  std::uint32_t use_count(void) const {
+      return refcount();
   }
 };
 typedef khRefCounterImpl<SingleThreadingPolicy> khRefCounter;
@@ -304,12 +346,12 @@ inline khRefGuard<T>
 khRefGuardFromNew(T *newobj) {
   return khRefGuard<T>(khUnrefNewGuard_<T>(newobj));
 }
+
 template <class T>
 inline khRefGuard<T>
 khRefGuardFromThis_(T *thisobj) {
   return khRefGuard<T>(khRerefThisGuard_<T>(thisobj));
 }
-
 
 // ****************************************************************************
 // ***  like khRefGuard but for objects w/o native ref counting ability
@@ -363,7 +405,8 @@ class khSharedHandle {
   }
 
   // expose refcount function from my shared object
-  inline uint32 refcount(void) const  { return impl ? impl->refcount() : 0; }
+  inline std::uint32_t refcount(void) const  { return impl ? impl->refcount() : 0; }
+  inline std::uint32_t use_count(void) const { return refcount(); }
 };
 
 

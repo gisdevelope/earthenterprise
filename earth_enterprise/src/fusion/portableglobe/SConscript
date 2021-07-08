@@ -1,6 +1,7 @@
 #-*- Python -*-
 #
 # Copyright 2017 Google Inc.
+# Copyright 2020 The Open GEE Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,7 +46,7 @@ gepartialglobebuilder = env.executable(
     ['gepartialglobebuilder.cpp', 'partialglobebuilder.cpp',
      portablepacketwriter],
     LIBS=['sharedportablelib', 'gesimpleearthstream',
-          'sgl', 'gif', 'png12', 'jpeg',
+          'sgl', 'gif', env['png_ver'], 'jpeg',
           'freetype', 'geutil', 'gecommon', 'cutspec',
           'geqtpacket', 'geos', 'qtutils'])
 
@@ -58,15 +59,15 @@ gedeltabuilder = env.executable(
     'gedeltabuilder',
     ['gedeltabuilder.cpp', deltabuilder, portablepacketwriter],
     LIBS=['sharedportablelib', 'gesimpleearthstream',
-          'sgl', 'gif', 'png12', 'jpeg',
+          'sgl', 'gif', env['png_ver'], 'jpeg',
           'freetype', 'geutil', 'gecommon', 'geqtpacket', 'geos'])
 
 geportableglobebuilder = env.executable(
     'geportableglobebuilder',
     ['geportableglobebuilder.cpp', portableglobebuilder, portablepacketwriter],
     LIBS=['sharedportablelib', 'gesimpleearthstream',
-          'sgl', 'gif', 'png12', 'jpeg',
-          'freetype', 'geutil', 'gecommon', 'geqtpacket', 'geos'])
+          'sgl', 'gif', env['png_ver'], 'jpeg',
+          'freetype', 'geutil', 'gecommon', 'geqtpacket', 'geos', 'qtutils'])
 
 gecreatemetadbroot = env.executable(
     'gecreatemetadbroot',
@@ -78,8 +79,8 @@ geportablemapbuilder = env.executable(
     ['geportablemapbuilder.cpp', portablemapbuilder,
      portableglobebuilder, portablepacketwriter],
     LIBS=['sharedportablelib', 'gesimpleearthstream',
-          'sgl', 'gif', 'png12', 'jpeg',
-          'freetype', 'geutil', 'gecommon', 'geqtpacket', 'geos'])
+          'sgl', 'gif', env['png_ver'], 'jpeg',
+          'freetype', 'geutil', 'gecommon', 'geqtpacket', 'geos', 'qtutils'])
 
 geportableglobepacker = env.executable(
     'geportableglobepacker',
@@ -97,7 +98,7 @@ portable_glc_reader_sobj = env.SharedObject('servers/fileunpacker/shared/portabl
 geglxinfo = env.executable(
     'geglxinfo',
     ['geglxinfo.cpp', portable_glc_reader_sobj],
-    LIBS=['geutil', 'gecommon', 'glb'])
+    LIBS=['geutil', 'gecommon', 'glb', 'geprotobuf', 'geqtpacket'])
 
 # Do NOT install this tool.
 gedecode = env.executable('gedecode',
@@ -106,7 +107,7 @@ gedecode = env.executable('gedecode',
 
 gerewritedbroot = env.executable(
     'gerewritedbroot',
-    ['gerewritedbroot.cpp'],
+    ['gerewritedbroot.cpp', 'rewritedbroot.cpp'],
     LIBS=['serverreaderlib', 'gedbroot', 'gesimpleearthstream',
           'gecommon', 'geutil', 'geprotobuf'])
 
@@ -136,7 +137,7 @@ portableglobebuilder_test = env.test(
      portableglobebuilder, portablepacketwriter],
     LIBS=['sharedportablelib', 'gtest',
           'geutil', 'gecommon', 'geqtpacket',
-          'geos', 'gesimpleearthstream'])
+          'geos', 'gesimpleearthstream', 'qtutils'])
 
 portablemapbuilder_test = env.test(
     'portablemapbuilder_test',
@@ -144,7 +145,7 @@ portablemapbuilder_test = env.test(
      portableglobebuilder, portablepacketwriter],
      LIBS=['sharedportablelib', 'gtest',
            'geutil', 'gecommon', 'geqtpacket',
-           'geos', 'gesimpleearthstream'])
+           'geos', 'gesimpleearthstream', 'qtutils'])
 
 cutspec_test = env.test('cutspec_test',
                         ['cutspec_unittest.cpp'],
@@ -168,4 +169,11 @@ createmetadbroot_unittest = env.test(
     'createmetadbroot_unittest',
     ['createmetadbroot_unittest.cpp', 'createmetadbroot'],
     LIBS=['gtest', 'gecommon', 'gedbroot', 'geprotobuf'],
+    CPPFLAGS='-Wno-error=narrowing')
+
+rewritedbroot_unittest = env.test(
+    'rewritedbroot_unittest',
+    ['rewritedbroot_unittest.cpp', 'rewritedbroot'],
+    LIBS=['gtest', 'serverreaderlib', 'gedbroot', 'gesimpleearthstream',
+          'gecommon', 'geutil', 'geprotobuf'],
     CPPFLAGS='-Wno-error=narrowing')

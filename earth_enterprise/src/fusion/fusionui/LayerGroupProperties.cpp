@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,19 +12,18 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-
-#include <qlineedit.h>
-#include <qcombobox.h>
-#include <qspinbox.h>
-#include <qlabel.h>
-#include <qpixmap.h>
-#include <qpushbutton.h>
-#include <qimage.h>
-#include <qcheckbox.h>
-#include <qgroupbox.h>
-#include <qtabwidget.h>
-
+#include <Qt/qobjectdefs.h>
+#include <Qt/qlineedit.h>
+#include <Qt/q3combobox.h>
+#include <Qt/qspinbox.h>
+#include <Qt/qlabel.h>
+#include <Qt/qpixmap.h>
+#include <Qt/qpushbutton.h>
+#include <Qt/qimage.h>
+#include <Qt/qcheckbox.h>
+#include <Qt/qgroupbox.h>
+#include <Qt/qtabwidget.h>
+#include <Qt/q3textedit.h>
 #include <gstLayer.h>
 
 #include "Preferences.h"
@@ -31,6 +31,8 @@
 #include "PixmapManager.h"
 #include "SiteIcons.h"
 #include "LocaleDetails.h"
+
+using QTextEdit = Q3TextEdit;
 
 
 static QString kDefaultLocaleName = QObject::tr("Default");
@@ -43,7 +45,7 @@ LayerGroupProperties::LayerGroupProperties(
 
   idSpinBox->setValue(layer_config_.channelId);
   layer_config_.AssignUuidIfEmpty();
-  uuidEdit->setText(layer_config_.asset_uuid_);
+  uuidEdit->setText(layer_config_.asset_uuid_.c_str());
 
   isVisibleCheck->setChecked(layer_config_.isVisible);
   isExpandableCheck->setChecked(layer_config_.isExpandable);
@@ -86,7 +88,7 @@ LayerConfig LayerGroupProperties::GetConfig() {
   layer_config_.isVisible = isVisibleCheck->isChecked();
   layer_config_.isExpandable = isExpandableCheck->isEnabled() &&
                                isExpandableCheck->isChecked();
-  layer_config_.channelId = static_cast<uint>(idSpinBox->value());
+  layer_config_.channelId = static_cast< unsigned int> (idSpinBox->value());
   layer_config_.asset_uuid_ = uuidEdit->text().ascii();
 
   return layer_config_;

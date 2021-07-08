@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,18 +24,20 @@
 #include <iostream>
 
 #include "common/khTypes.h"
+#include <cstdint>
+#include "CacheSizeCalculations.h"
 
 
 // Random access iterator for version reference generator.
 template<class _Tp, class _Ptr, class _Ref>
 struct _VerRefGenIterator :
     public std::iterator<std::random_access_iterator_tag,
-                         _Tp, int32, _Ptr, _Ref> {
+                         _Tp, std::int32_t, _Ptr, _Ref> {
   typedef _VerRefGenIterator<_Tp, _Tp*, _Tp&> iterator;
   typedef _VerRefGenIterator<_Tp, const _Tp*, const _Tp&> const_iterator;
 
   typedef _Tp value_type;
-  typedef int32 difference_type;
+  typedef std::int32_t difference_type;
   typedef _Ptr pointer;
   typedef _Ref reference;
   typedef std::random_access_iterator_tag iterator_category;
@@ -92,13 +95,13 @@ struct _VerRefGenIterator :
 
   _Self& operator--() { ++cur_; return (*this); }
 
-  _Self operator++(int32) {
+  _Self operator++(std::int32_t) {
     _Self temp(*this);
     ++*this;
     return temp;
   }
 
-  _Self operator--(int32) {
+  _Self operator--(std::int32_t) {
     _Self temp(*this);
     --*this;
     return temp;
@@ -128,6 +131,10 @@ struct _VerRefGenIterator :
   const std::string* operator->() const { return &cur_.GetRef(); }
 
   value_type cur_;
+
+  std::uint64_t GetHeapUsage() const {
+    return ::GetHeapUsage(cur_);
+  }
 };
 
 // class _VerRefDef - version reference definition.
@@ -137,7 +144,7 @@ struct _VerRefDef {
 
   explicit _VerRefDef(const std::string& ref);
 
-  _VerRefDef(const std::string& _asset_name, uint32 _ver_num);
+  _VerRefDef(const std::string& _asset_name, std::uint32_t _ver_num);
 
   bool Valid() const {
     return (ver_num >= 0 && (!asset_name.empty()));
@@ -173,12 +180,12 @@ struct _VerRefDef {
 
   const std::string& operator*() const { return GetRef(); }
 
-  _Self& operator+=(const int32 __x) {
+  _Self& operator+=(const std::int32_t __x) {
     ver_num += __x;
     InvalidateRef();
     return (*this);
   }
-  _Self& operator-=(const int32 __x) {
+  _Self& operator-=(const std::int32_t __x) {
     ver_num -= __x;
     InvalidateRef();
     return (*this);
@@ -196,34 +203,39 @@ struct _VerRefDef {
     return (*this);
   }
 
-  _Self operator++(int32) {
+  _Self operator++(std::int32_t) {
     _Self temp(*this);
     ++*this;
     return temp;
   }
 
-  _Self operator--(int32) {
+  _Self operator--(std::int32_t) {
     _Self temp(*this);
     --*this;
     return temp;
   }
 
-  _Self operator+(const int32 __x) const {
+  _Self operator+(const std::int32_t __x) const {
     _Self temp = *this;
     temp += __x;
     return temp;
   }
 
-  _Self operator-(const int32 __x) const {
+  _Self operator-(const std::int32_t __x) const {
     _Self temp = *this;
     temp -= __x;
     return temp;
   }
 
-  int32 operator-(const _Self& __x) const { return ver_num - __x.ver_num; }
+  std::int32_t operator-(const _Self& __x) const { return ver_num - __x.ver_num; }
 
   std::string asset_name;
-  int32 ver_num;
+  std::int32_t ver_num;
+
+  std::uint64_t GetHeapUsage() const {
+    return ::GetHeapUsage(asset_name)
+            + ::GetHeapUsage(ref);
+  }
 
  private:
   void InvalidateRef() const { ref.clear(); }
@@ -243,7 +255,7 @@ class VerRefGen {
   typedef std::string& reference;
   typedef const std::string& const_reference;
   typedef size_t size_type;
-  typedef int32 difference_type;
+  typedef std::int32_t difference_type;
 
   VerRefGen();
 
@@ -305,6 +317,12 @@ class VerRefGen {
  private:
   iterator start_;
   iterator finish_;
+
+ public:
+  std::uint64_t GetHeapUsage() const {
+    return ::GetHeapUsage(start_)
+            + ::GetHeapUsage(finish_);
+  }
 };
 
 
@@ -314,6 +332,24 @@ inline std::string ToString(const VerRefGen &val) {
 
 inline void FromString(const std::string &str, VerRefGen &val) {
   val = VerRefGen(str);
+}
+
+inline std::uint64_t GetHeapUsage(const _VerRefDef &verRefDef) {
+  return verRefDef.GetHeapUsage();
+}
+
+template <class _Tp>
+inline std::uint64_t GetHeapUsage(const _VerRefGenIterator<_Tp, _Tp*, _Tp&> &verRefGenIter) {
+  return verRefGenIter.GetHeapUsage();
+}
+
+template <class _Tp>
+inline std::uint64_t GetHeapUsage(const _VerRefGenIterator<_Tp, const _Tp*, const _Tp&> &constVerRefGenIter) {
+  return constVerRefGenIter.GetHeapUsage();
+}
+
+inline std::uint64_t GetHeapUsage(const VerRefGen &verRefGen) {
+  return verRefGen.GetHeapUsage();
 }
 
 #endif  // GEO_EARTH_ENTERPRISE_SRC_COMMON_VERREF_STORAGE_H_

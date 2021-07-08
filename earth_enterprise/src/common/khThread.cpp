@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,6 +49,14 @@ bool khMutexBase::TryLock(void) {
   // if this wasn't properly initialized, we'll get an error
   int err = pthread_mutex_trylock(&mutex);
   assert(err != EINVAL);
+  return (err == 0);
+}
+
+bool khMutexBase::TimedTryLock(unsigned int secToWait) {
+  timespec timeoutThreshold;
+  clock_gettime(CLOCK_REALTIME, &timeoutThreshold);
+  timeoutThreshold.tv_sec += secToWait;
+  int err = pthread_mutex_timedlock(&mutex, &timeoutThreshold);
   return (err == 0);
 }
 

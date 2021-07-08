@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,9 +26,9 @@
 #define MAX_OPEN_FILES 10
 
 // Expect 10000 Geodes to consume maximum cache size of 5MB (avg 500 Byte).
-const uint gstSourceManager::kGeodesCacheSize = 10000;
+const unsigned int gstSourceManager::kGeodesCacheSize = 10000;
 // Record caches don't consume much and doesn't change much.
-const uint gstSourceManager::kRecordCacheSize = 20000;
+const unsigned int gstSourceManager::kRecordCacheSize = 20000;
 gstSourceManager* theSourceManager = NULL;
 
 void gstSourceManager::init(int sz) {
@@ -36,9 +37,9 @@ void gstSourceManager::init(int sz) {
 }
 
 gstSourceManager::gstSourceManager(int cacheSize)
-    : geode_cache_(gstSourceManager::kGeodesCacheSize),
-      geometry_cache_(cacheSize),
-      record_cache_(gstSourceManager::kRecordCacheSize) {
+    : geode_cache_(gstSourceManager::kGeodesCacheSize, "GST geode"),
+      geometry_cache_(cacheSize, "GST geometry"),
+      record_cache_(gstSourceManager::kRecordCacheSize, "GST record") {
 }
 
 gstSourceManager::~gstSourceManager() {
@@ -87,7 +88,7 @@ gstSource* gstSourceManager::PrivateGetSource(int id) {
 
 gstGeometryHandle gstSourceManager::PrivateGetGeometryOrThrow(
     const UniqueFeatureId& ufid, bool is_mercator_preview) {
-  uint64 addr = GEODE_ADDR(ufid.source_id, ufid.layer_num, ufid.feature_id);
+  std::uint64_t addr = GEODE_ADDR(ufid.source_id, ufid.layer_num, ufid.feature_id);
 
   gstGeometryHandle geom;
   if (!geometry_cache_.Find(addr, geom)) {
@@ -116,7 +117,7 @@ gstJobStats* get_stats = new gstJobStats("SRC MGR", JobNames, 6);
 gstGeodeHandle gstSourceManager::PrivateGetFeatureOrThrow(
     const UniqueFeatureId& ufid, bool is_mercator_preview) {
   JOBSTATS_SCOPED(get_stats, JOBSTATS_GETFEATURE);
-  uint64 addr = GEODE_ADDR(ufid.source_id, ufid.layer_num, ufid.feature_id);
+  std::uint64_t addr = GEODE_ADDR(ufid.source_id, ufid.layer_num, ufid.feature_id);
 
   gstGeodeHandle geode;
   if (!geode_cache_.Find(addr, geode)) {
@@ -183,7 +184,7 @@ gstSharedSource gstSourceManager::GetSharedAssetSource(
   if (!found) {
     Asset asset(assetRef);
     if (!asset) {
-      throw khException(kh::tr("No such asset: '%1'").arg(assetRef));
+      throw khException(kh::tr("No such asset: '%1'").arg(assetRef.c_str()));
     }
     AssetVersion ver(asset->GetLastGoodVersionRef());
     std::string productName;
@@ -191,7 +192,7 @@ gstSharedSource gstSourceManager::GetSharedAssetSource(
       productName = ver->GetOutputFilename(0);
     } else {
       throw khException(kh::tr("Asset '%1' doesn't have a good version")
-                        .arg(assetRef));
+                        .arg(assetRef.c_str()));
     }
 
     found = khRefGuardFromNew(new gstSharedSourceImpl(productName, assetRef));
@@ -250,7 +251,7 @@ gstSharedSourceImpl::gstSharedSourceImpl(const std::string &path_,
 {
   source = new gstSource(path.c_str());
   if (source->Open() != GST_OKAY) {
-    throw khException(kh::tr("Unable to open '%1'").arg(path));
+    throw khException(kh::tr("Unable to open '%1'").arg(path.c_str()));
   }
   sourceId = theSourceManager->AddSource(source);
   source->unref(); // now owned by source manager
@@ -259,15 +260,15 @@ gstSharedSourceImpl::~gstSharedSourceImpl(void) {
   theSourceManager->RemoveSharedSource(sourceId, key);
 }
 int gstSharedSourceImpl::Id(void) const { return sourceId; }
-uint32 gstSharedSourceImpl::NumFeatures(uint32 layer) const {
+ std::uint32_t gstSharedSourceImpl::NumFeatures(std::uint32_t layer) const {
   return source->NumFeatures(layer);
 }
-gstRecordHandle gstSharedSourceImpl::GetAttributeOrThrow(uint32 layer,
-                                                         uint32 id) {
+gstRecordHandle gstSharedSourceImpl::GetAttributeOrThrow(std::uint32_t layer,
+                                                         std::uint32_t id) {
   return source->GetAttributeOrThrow(layer, id);
 }
 const gstHeaderHandle&
-gstSharedSourceImpl::GetAttrDefs(uint32 layer) const {
+gstSharedSourceImpl::GetAttrDefs(std::uint32_t layer) const {
   return source->GetAttrDefs(layer);
 }
 const char* gstSharedSourceImpl::name(void) const {

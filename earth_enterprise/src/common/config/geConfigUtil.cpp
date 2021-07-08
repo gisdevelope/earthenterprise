@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,7 +28,7 @@
 #include <khFileUtils.h>
 #include <khStringUtils.h>
 #include <khSimpleException.h>
-
+#include <unistd.h>
 
 void AssertRunningAsRoot(void) {
   // uid 0 -> root
@@ -40,45 +41,17 @@ bool IsRedHat(void) {
   return khExists("/etc/redhat-release");
 }
 
-uint GetNumCPUs(void) {
-  uint numcpus = 0;
-  std::ifstream in("/proc/cpuinfo");
-  if (in) {
-    std::string line;
-    while (std::getline(in, line)) {
-      if (StartsWith(line, "processor")) {
-        ++numcpus;
-      }
-    }
-  }
-
-  return std::max(uint(1), numcpus);
+unsigned int GetNumCPUs(void) {
+  return std::max(uint(1), uint(sysconf(_SC_NPROCESSORS_ONLN)));
 }
 
-uint64 GetPhysicalMemorySize(void) {
-  std::ifstream in("/proc/meminfo");
-  const std::string delimiters(" \t");
-  if (in) {
-    std::string line;
-    while (std::getline(in, line)) {
-      // will be a line of the form: MemTotal:       255944 kB
-      if (StartsWith(line, "MemTotal")) {
-        // parse out the kB.
-        std::vector<std::string> tokens;
-        TokenizeString(line, tokens, delimiters);
-        if (tokens.size() == 3 && tokens[2] == "kB") {
-          return strtouq(tokens[1].c_str(), NULL, 10) * 1000;
-        }
-        return 0;  // parse failure...too many tokens or not "kB"
-      }
-    }
-    return 0;  // parse failure
-  }
-
-  return 0;  // parse failure
+ std::uint64_t GetPhysicalMemorySize(void) {
+    std::uint64_t pages = sysconf(_SC_PHYS_PAGES),
+           page_size = sysconf(_SC_PAGE_SIZE);
+    return (pages * page_size);
 }
 
-uint GetMaxFds(int requested) {
+unsigned int GetMaxFds(int requested) {
   int systemMax = khMaxOpenFiles();
   if (requested > 0) {
     return std::min(systemMax, requested);
@@ -106,7 +79,7 @@ std::string GetAndValidateHostname(void) {
         kh::tr(
             "This machine's hostname (%1) does not map to an IP address.\n",
             "Please use the system utilities to reconfigure the hostname.")
-        .arg(hostname));
+        .arg(hostname.c_str()));
   }
 
   return hostname;

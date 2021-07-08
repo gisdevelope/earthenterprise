@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,6 +31,7 @@
 #include "fusion/autoingest/geAssetRoot.h"
 #include "common/khFileUtils.h"
 #include "common/performancelogger.h"
+#include "fusion/config/gefConfigUtil.h"
 
 // ****************************************************************************
 // ***  global instances
@@ -89,6 +91,15 @@ khResourceManager::Init(void)
     geAssetRoot::Dirname(AssetDefs::AssetRoot(), geAssetRoot::StateDir);
 
   khLockGuard lock(mutex);
+  if(getenv("KH_NFY_LEVEL") == NULL)
+  {
+      Systemrc systemrc;
+      LoadSystemrc(systemrc);
+      std::uint32_t logLevel = systemrc.logLevel;
+      notify(NFY_WARN, "system log level changed to: %s",
+             khNotifyLevelToString(static_cast<khNotifyLevel>(logLevel)).c_str());
+      setNotifyLevel(static_cast<khNotifyLevel>(logLevel));
+  }
 
   // Find all the old task symlinks and tell the asset manager to resubmit
   // them. The symlinks have the form (taskid.task -> verref)
@@ -108,7 +119,7 @@ khResourceManager::Init(void)
     std::string child = statedir + "/" + dname;
 
     if (khSymlinkExists(child)) {
-      uint32 taskid = 0;
+      std::uint32_t taskid = 0;
       FromString(khDropExtension(dname), taskid);
       if (taskid == 0) {
         notify(NFY_FATAL, "Unrecognized task symlink %s",
@@ -233,9 +244,14 @@ khResourceManager::InsertProvider(khResourceProviderProxy *proxy)
   // instantiate the Volumes that this provider will manage
   std::vector<std::string> volnames;
   GetHostVolumes(host, volnames);
-  for (std::vector<std::string>::const_iterator vn = volnames.begin();
-       vn != volnames.end(); ++vn) {
-    volumes[*vn] = new Volume(*vn, proxy);
+  for (const auto& vn : volnames) {
+    if (volumes.find(vn) != volumes.end())
+    {
+      notify(NFY_WARN,"Volume %s already present in list of names", vn.c_str());
+      delete volumes[vn];
+      volumes.erase(vn);
+     }
+     volumes[vn] = new Volume(vn, proxy);
   }
 
   // wake up the activate thread
@@ -252,10 +268,13 @@ khResourceManager::EraseProvider(khResourceProviderProxy *proxy)
   // remove the Volumes that this provider used to manage
   std::vector<std::string> volnames;
   GetHostVolumes(host, volnames);
-  for (std::vector<std::string>::const_iterator vn = volnames.begin();
-       vn != volnames.end(); ++vn) {
-    delete volumes[*vn];
-    volumes.erase(*vn);
+  for (const auto& vn : volnames) {
+    delete volumes[vn];
+    volumes.erase(vn);
+  }
+  if (volumes.empty())
+  {
+      volumes.clear();
   }
 }
 
@@ -278,7 +297,7 @@ Reservation
 khResourceManager::MakeVolumeReservation(const std::string &assetPath,
                                          const std::string &volume,
                                          const std::string &path,
-                                         uint64 size)
+                                         std::uint64_t size)
 {
   Volume *vol = GetVolume(volume);
   if (vol && vol->MakeReservation(path, size)) {
@@ -316,7 +335,7 @@ Reservation
 khResourceManager::MakeCPUReservation(khResourceProviderProxy *provider,
                                       const TaskRequirements::CPU &req)
 {
-  uint num = std::min(provider->AvailCPUs(), req.maxNumCPU);
+  unsigned int num = std::min(provider->AvailCPUs(), req.maxNumCPU);
   if (num >= req.minNumCPU) {
 
     provider->usedCPUs += num;
@@ -331,7 +350,7 @@ khResourceManager::MakeCPUReservation(khResourceProviderProxy *provider,
 
 
 void
-khResourceManager::ReleaseCPUReservation(const std::string &host, uint num)
+khResourceManager::ReleaseCPUReservation(const std::string &host, unsigned int num)
 {
   Providers::iterator found = providers.find(host);
   if (found != providers.end()) {
@@ -399,13 +418,13 @@ khResourceManager::TryActivate(void) throw()
       providers.size()) {
     // figure out which providers have CPU resources to spare
     Providers availProviders;
-    for (Providers::iterator p = providers.begin();
-         p != providers.end(); ++p) {
-      if (p->second->usedCPUs < p->second->numCPUs) {
-        availProviders.insert(*p);
-      }
+    for (const auto& p : providers)
+    {
+        if (p.second->usedCPUs < p.second->numCPUs)
+        {
+            availProviders.insert(p);
+        }
     }
-
     notify(NFY_DEBUG, "     avail providers = %lu",
            static_cast<long unsigned>(availProviders.size()));
     if (availProviders.size() != 0) {
@@ -504,7 +523,7 @@ khResourceManager::MakeFixedVolumeReservations(khTask *task,
 
   // Try to make all the output reservations for the outputs with fixed
   // volumes
-  for (uint i = 0; i < taskdef.outputs.size(); ++i) {
+  for (unsigned int i = 0; i < taskdef.outputs.size(); ++i) {
     const TaskDef::Output *defo          = &taskdef.outputs[i];
     const TaskRequirements::Output *reqo = &req.outputs[i];
     if (reqo->volume != "*anytmp*") {
@@ -602,7 +621,7 @@ khResourceManager::ProviderCanSatisfy(khTask *task,
   reservations.push_back(cpures);
 
   // try to make reservations for outputs with volumes set to *anytmp*
-  for (uint o = 0; o < taskdef.outputs.size(); ++o) {
+  for (unsigned int o = 0; o < taskdef.outputs.size(); ++o) {
     const TaskDef::Output *defo          = &taskdef.outputs[o];
     const TaskRequirements::Output *reqo = &req.outputs[o];
     if (reqo->volume == "*anytmp*") {
@@ -619,7 +638,7 @@ khResourceManager::ProviderCanSatisfy(khTask *task,
 
       // prune and order tmpVolumes based on inputs that must be or
       // prefer to be on a different volume
-      for (uint i = 0; i < req.inputs.size(); ++i) {
+      for (unsigned int i = 0; i < req.inputs.size(); ++i) {
         const TaskRequirements::Input *reqi = &req.inputs[i];
 
         // sone inputs don't have volumes (namely URI's)
@@ -766,7 +785,7 @@ khResourceManager::NotifyTaskDone(const TaskDoneMsg &doneMsg)
 // ****************************************************************************
 bool
 khResourceManager::Volume::MakeReservation(const std::string &path,
-                                           uint64 size) {
+                                           std::uint64_t size) {
   if (!provider->ConnectionLost() && (avail > size)) {
     Reservations::const_iterator found =
       reservations.find(path);
@@ -926,6 +945,11 @@ khResourceManager::GetCurrTasks(TaskLists &ret)
   // Get total numbers of assets and asset's versions cached.
   ret.num_assets_cached = Asset::CacheSize();
   ret.num_assetversions_cached = AssetVersion::CacheSize();
+  // Get total amount of memory used by the objects in asset and asset version caches.
+  ret.asset_cache_memory = Asset::CacheMemoryUse();
+  ret.version_cache_memory = AssetVersion::CacheMemoryUse();
+  // Get the number of strings in SharedString string store.
+  ret.str_store_size = SharedString::StoreSize();
 }
 
 void

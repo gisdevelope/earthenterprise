@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,14 +31,14 @@
 #include "common/config/geCapabilities.h"
 
 namespace {
-const uint32 kMaxNumJobsDefault = 8;
+const std::uint32_t kMaxNumJobsDefault = 8;
 
-uint32 GetDefaultMaxNumJobs() {
+ std::uint32_t GetDefaultMaxNumJobs() {
   char* variable;
-  uint32 max_num_jobs = kMaxNumJobsDefault;
+  std::uint32_t max_num_jobs = kMaxNumJobsDefault;
   if ((variable = getenv("KH_GOOGLE_MAX_NUM_JOBS")) != NULL) {
     char *endptr = NULL;
-    const uint32 value = static_cast<uint32>(
+    const std::uint32_t value = static_cast<std::uint32_t>(
         std::strtoul(variable, &endptr, 0));
     if (endptr != variable) {
       max_num_jobs = value;
@@ -71,11 +72,11 @@ std::string ValidateHostReadyForConfig(void) {
   return GetAndValidateHostname();
 }
 
-void LoadSystemrc(Systemrc &systemrc) {
+void LoadSystemrc(Systemrc &systemrc, bool override_cache) {
   static Systemrc cached_systemrc;
   static bool     use_cached = false;
 
-  if (use_cached) {
+  if (use_cached && !override_cache) {
     systemrc = cached_systemrc;
     return;
   }
@@ -86,7 +87,7 @@ void LoadSystemrc(Systemrc &systemrc) {
     // affecting the defaults for this load
     Systemrc tmp;
     if (tmp.Load()) {
-      uint32 max_num_jobs = GetMaxNumJobs();
+      std::uint32_t max_num_jobs = GetMaxNumJobs();
 
       // If uninitialized or greater than maximum allowable number of
       // concurrent jobs, the maxjobs defaults to the min of the values:
@@ -95,10 +96,16 @@ void LoadSystemrc(Systemrc &systemrc) {
       if (tmp.maxjobs == 0 || tmp.maxjobs > max_num_jobs) {
         tmp.maxjobs = std::min(max_num_jobs, kMaxNumJobsLimit);
       }
+      if (tmp.logLevel < 0 || tmp.logLevel > 7)
+      {
+          notify(NFY_WARN, "systemrc contains invalid logLevel parameter! Defaulting to: %s",
+                 khNotifyLevelToString(NFY_DEFAULT_LEVEL).c_str());
+          tmp.logLevel = NFY_DEFAULT_LEVEL;
+      }
       systemrc = cached_systemrc = tmp;
     }
   } else {
-    throw khException(kh::tr("'%1' is missing").arg(Systemrc::Filename()));
+    throw khException(kh::tr("'%1' is missing").arg(Systemrc::Filename().c_str()));
   }
 }
 
@@ -108,7 +115,7 @@ std::string CommandlineAssetRootDefault(void) {
   return systemrc.assetroot;
 }
 
-uint32 CommandlineNumCPUsDefault(void) {
+ std::uint32_t CommandlineNumCPUsDefault(void) {
   Systemrc systemrc;
   LoadSystemrc(systemrc);
   return systemrc.maxjobs;
@@ -122,7 +129,7 @@ void LoadVolumesOrThrow(const std::string &assetroot, VolumeDefList &volumes) {
     geAssetRoot::Filename(assetroot, geAssetRoot::VolumeFile);
   if (!khExists(volumefname) || !volumes.Load(volumefname)) {
     throw khException(kh::tr("Unable to load volumes for %1")
-                      .arg(assetroot));
+                      .arg(assetroot.c_str()));
   }
 }
 
@@ -132,7 +139,7 @@ void SaveVolumesOrThrow(const std::string &assetroot,
     geAssetRoot::Filename(assetroot, geAssetRoot::VolumeFile);
   if (!volumes.Save(volumefname)) {
     throw khException(kh::tr("Unable to save volumes for %1")
-                      .arg(assetroot));
+                      .arg(assetroot.c_str()));
   }
   (void)khChmod(volumefname, geAssetRoot::FilePerms(geAssetRoot::VolumeFile));
 }
@@ -143,17 +150,16 @@ void SwitchToUser(const std::string username,
   ge_user.SwitchEffectiveToThis();
 }
 
-uint32 GetMaxNumJobs() {
-  uint32 max_num_jobs = 0;
+ std::uint32_t GetMaxNumJobs() {
+  std::uint32_t max_num_jobs = 0;
 
   // Get maximum allowable number of concurrent jobs.
   // Note: KH_MAX_NUM_JOBS_COEFF can be used to build GEE Fusion licensing
   // KH_MAX_NUM_JOBS_COEFF*kMaxNumJobsDefault (8/16/24..) concurrent jobs.
 #ifdef KH_MAX_NUM_JOBS_COEFF
   max_num_jobs = kMaxNumJobsDefault *
-      static_cast<uint32>(KH_MAX_NUM_JOBS_COEFF);
+      static_cast<std::uint32_t>(KH_MAX_NUM_JOBS_COEFF);
 #endif
-
   // Note: Apply an internal multiplier in case of GEE Fusion is built
   // with maximum number of concurrent jobs equals 0 (internal usage).
   if (max_num_jobs == 0) {

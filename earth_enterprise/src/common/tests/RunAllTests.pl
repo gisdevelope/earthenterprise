@@ -30,6 +30,13 @@ my $OSLABEL = "";
 #set to 1 to include stdout output for non-error tests
 my $VERBOSE = 0;
 
+# List tests that should be skipped here:
+my %DISABLE_TESTS;
+
+for my $name ('parse-raster-project-xml-no-content_unittest') {
+  $DISABLE_TESTS{$name} = 1;
+}
+
 sub usage() {
   print "USAGE:  RunAllTests.pl [OPTIONAL ARGUMENTS]\n";
   print "\tOPTIONAL ARGUMENTS: \n";
@@ -54,11 +61,11 @@ if($argc > 0) {
   }
 }
 
-# This script should be run from NATIVE-*-x86_64/bin/tests
+# This script should be run from <build_dir>/bin/tests
 my $scriptDir = dirname(abs_path($0));
-if ($scriptDir !~ /NATIVE-[a-zA-Z0-9_-]*\/bin\/tests$/) {
+if ($scriptDir !~ /[a-zA-Z0-9\._-]*\/bin\/tests$/ or not -e "$scriptDir/../../gee_version.txt") {
     print "This script should be run from <build_dir>/bin/tests.\n";
-    print "<build_dir> is usually something like NATIVE-REL-x86_64.\n";
+    print "<build_dir> should contain gee_version.txt.\n";
     exit;
 }
 chdir($scriptDir);
@@ -71,7 +78,11 @@ open(my $fh, '>', $logfile) or die $!;
 # gdal_rasterize,...) used in tests.
 $ENV{'PATH'} = join ":", "..", $ENV{'PATH'};
 
-my @tests = glob("./*test*");
+# Find binary names that contain 'test' in their name, but don't end in
+# '_resourcetest':
+my @tests =
+  grep { $_ !~ /_resourcetest$/ && $_ !~ /.yaml$/ && $_ ne './generate_test_asset_xmls.py' }
+  glob("./*test*");
 
 my $longest = 0;
 foreach my $test (@tests) {
@@ -95,6 +106,11 @@ foreach my $test (@tests) {
     next if $basename eq $Script;
     print "Running $basename ... ", ' 'x($longest-length($basename));
 
+    if ($DISABLE_TESTS{$basename}) {
+      print "DISABLED\n";
+      next;
+    }
+
     #set up xml tags for this file
     my $testsuite = "\t<testsuite ";
     my $stdout_data = "\t\t\t<system-out>\n";
@@ -106,7 +122,7 @@ foreach my $test (@tests) {
     my @testcases;
     my $prev = "";
 
-    if (open(OUTPUT, "LD_LIBRARY_PATH=\"../../lib\" $test 2>&1 |")) {
+    if (open(OUTPUT, "LD_LIBRARY_PATH=\"../../lib:../../gehttpd/lib\" $test 2>&1 |")) {
         while (<OUTPUT>) {
             my $line = $_;
 
@@ -134,8 +150,8 @@ foreach my $test (@tests) {
               }
 
               #capture the test name from successes, which come in 2 different formats
-              $line =~ s/^\[.+\]\s+//; 
-              if ($line =~ /^(\[.+\]\w+)?(\w+)(\s+succeeded)$/) { 
+              $line =~ s/^\[.+\]\s+//;
+              if ($line =~ /^(\[.+\]\w+)?(\w+)(\s+succeeded)$/) {
                 $line = $2;
               }
               elsif ($line =~ /(.+)\s+\((\d+)\s+ms\).*$/) {
@@ -185,7 +201,7 @@ foreach my $test (@tests) {
       $test_count = 1;
     }
 
-    ### print xml for the test file we just ran 
+    ### print xml for the test file we just ran
     $testsuite .= " name=\"$basename\" tests=\"$test_count\">\n";
 
     #if there was a failure, save the output in the stderr-data xml block
@@ -207,8 +223,8 @@ foreach my $test (@tests) {
 
     print $fh $testsuite;
 
-    #print xml for each testcase inside this testsuite 
-    foreach my $testcase (@testcases) { 
+    #print xml for each testcase inside this testsuite
+    foreach my $testcase (@testcases) {
       print $fh $testcase;
       print $fh $stdout_data;
       print $fh $stderr_data;

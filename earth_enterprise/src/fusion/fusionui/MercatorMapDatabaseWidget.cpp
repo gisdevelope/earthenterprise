@@ -18,11 +18,11 @@
 
 #include <string>
 #include <vector>
-#include <qframe.h>
-#include <qlabel.h>
-#include <qpushbutton.h>
-#include <qgroupbox.h>
-#include <qcheckbox.h>
+#include <Qt/qframe.h>
+#include <Qt/qlabel.h>
+#include <Qt/qpushbutton.h>
+#include <Qt/qgroupbox.h>
+#include <Qt/qcheckbox.h>
 
 #include <autoingest/.idl/AssetStorage.h>
 #include <autoingest/plugins/MapProjectAsset.h>
@@ -33,7 +33,7 @@
 #include "fusion/fusionui/AssetChooser.h"
 #include "fusion/fusionversion.h"
 
-QString MercatorMapDatabaseWidget::empty_text(tr("<none>"));
+QString MercatorMapDatabaseWidget::empty_text(kh::tr("<none>"));
 
 MercatorMapDatabaseWidget::MercatorMapDatabaseWidget(QWidget* parent,
                                                      AssetBase* base)
@@ -45,8 +45,8 @@ void MercatorMapDatabaseWidget::Prefill(const MapDatabaseEditRequest& request) {
 
   if (request.config.mapProject.size() != 0) {
     projects.push_back(request.config.mapProject);
-    map_project_label->setText(shortAssetName(
-        QString(request.config.mapProject.c_str())));
+    std::string san = shortAssetName(request.config.mapProject);
+    map_project_label->setText(san.c_str());
   } else {
     map_project_label->setText(empty_text);
   }
@@ -113,8 +113,8 @@ void MercatorMapDatabaseWidget::ChooseMapProject() {
   QString newpath;
   if (!chooser.getFullPath(newpath))
     return;
-
-  map_project_label->setText(shortAssetName(newpath));
+  std::string san = shortAssetName(newpath);
+  map_project_label->setText(san.c_str());
 }
 
 void MercatorMapDatabaseWidget::ChooseImageryProject() {
@@ -154,6 +154,7 @@ void MercatorMapDatabaseWidget::SetImageryProject(const QString& path) {
     ClearImageryProject();
   } else {
     imagery_project_path_ = path;
-    imagery_project_label->setText(shortAssetName(imagery_project_path_));
+    std::string san = shortAssetName(imagery_project_path_);
+    imagery_project_label->setText(san.c_str());
   }
 }

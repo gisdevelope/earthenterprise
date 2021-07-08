@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +21,7 @@
 
 #include <map>
 #include "khstrconv.h"
+#include "CacheSizeCalculations.h"
 
 class khMetaData
 {
@@ -41,6 +43,10 @@ class khMetaData
     map.erase(key);
   }
 
+  // determine amount of memory used by members
+  std::uint64_t GetHeapUsage() const {
+    return ::GetHeapUsage(map);
+  }
 
   bool operator==(const khMetaData &o) const { return map == o.map; }
 
@@ -68,5 +74,8 @@ class khMetaData
   }
 };
 
+inline std::uint64_t GetHeapUsage(const khMetaData &metaData) {
+  return metaData.GetHeapUsage();
+}
 
 #endif /* __khMetaData_h */

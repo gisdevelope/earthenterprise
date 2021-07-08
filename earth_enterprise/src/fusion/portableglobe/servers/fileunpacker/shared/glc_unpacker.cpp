@@ -1,4 +1,6 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,11 +22,11 @@
 #include <map>
 #include <sstream>  // NOLINT(readability/streams)
 #include <string>
+#include <cstring>
 #include <cassert>
 #include "./file_package.h"
 #include "./file_unpacker.h"
 #include "./glc_reader.h"
-#include "./khTypes.h"
 
 const char* LAYER_INFO = "earth/layer_info.txt";
 // Types for layers
@@ -34,8 +36,8 @@ const char* VECTOR_LAYER_TYPE = "VECTOR";
 const char* MAP_LAYER_TYPE = "MAP";
 
 // GEE identifying bytes in all glxs.
-const uint32 GEE_ID = 0x47454547;
-const uint64 GEE_ID_OFFSET = 8;
+const std::uint32_t GEE_ID = 0x47454547;
+const std::uint64_t GEE_ID_OFFSET = 8;
 
 /**
  * Constructor. Load the index to all of the files and
@@ -55,8 +57,8 @@ GlcUnpacker::GlcUnpacker(const GlcReader& glc_reader,
   length_ = glc_reader_.Size();
 
   // Check file is a GEE file first.
-  uint32 id;
-  int64 offset = length_ - GEE_ID_OFFSET;
+  std::uint32_t id;
+  std::int64_t offset = length_ - GEE_ID_OFFSET;
   if (!glc_reader_.ReadData(&id, offset, sizeof(id))) {
     std::cerr << "Unable to read file id." << std::endl;
     return;
@@ -70,8 +72,8 @@ GlcUnpacker::GlcUnpacker(const GlcReader& glc_reader,
 
   // Get offset to index.
   offset = length_ - Package::kIndexOffsetOffset;
-  uint32 num_files = 0;
-  int64 index_offset;
+  std::uint32_t num_files = 0;
+  std::int64_t index_offset;
   if (!glc_reader_.ReadData(
       &index_offset, offset, Package::kIndexOffsetSize)) {
     std::cerr << "Unable to read file offset." << std::endl;
@@ -93,9 +95,9 @@ GlcUnpacker::GlcUnpacker(const GlcReader& glc_reader,
   // Read in the index entries.
   std::string path;
   PackageFileLoc file_loc;
-  for (uint32 i = 0; i < num_files; ++i) {
+  for (std::uint32_t i = 0; i < num_files; ++i) {
     // Read in the relative path of the index entry.
-    uint16 path_len;
+    std::uint16_t path_len;
     if (!Read(&path_len, sizeof(path_len))) {
       std::cerr << "Unable to read file name length." << std::endl;
       return;
@@ -230,7 +232,7 @@ void GlcUnpacker::SetUpLayerUnpackers(bool files_only) {
 /**
  * Helper for reading in consecutive fields from the glc file.
  */
-bool GlcUnpacker::Read(void* data, uint64 size) {
+bool GlcUnpacker::Read(void* data, std::uint64_t size) {
   if (glc_reader_.ReadData(data, reader_offset_, size)) {
     reader_offset_ += size;
     return true;
@@ -301,6 +303,62 @@ bool GlcUnpacker::FindMapDataPacket(const char* qtpath,
       return false;
     }
   }
+}
+
+
+void GlcUnpacker::MapDataPacketWalker(const map_packet_walker& walker) const
+{
+  if (!is_gee_) {
+    std::cerr << "Not a GEE file." << std::endl;
+    return;
+  }
+
+  for( auto& index_item : unpacker_index_) {
+    if (index_item.second->MapDataPacketWalker(index_item.first, walker) == true) {
+      break;
+    }
+  }
+}
+
+void GlcUnpacker::MapDataPacketWalker(int layer, const map_packet_walker& walker) const
+{
+  if (!is_gee_) {
+    std::cerr << "Not a GEE file." << std::endl;
+    return;
+  }
+  auto iter = unpacker_index_.find(layer);
+  if (iter == unpacker_index_.end()) {
+    std::cerr << "Layer " << layer << " not found." << std::endl;
+    return;
+  }
+  iter->second->MapDataPacketWalker(layer, walker);
+}
+
+/**
+ * Find the names of all files in each layer of a globe.
+ */
+bool GlcUnpacker::MapFileWalker(const map_file_walker& walker)
+{
+    for( auto& index_item : unpacker_index_) {
+        if (MapFileWalker(index_item.first, walker)) {
+          return true;
+        }
+    }
+    return false;
+}
+
+bool GlcUnpacker::MapFileWalker(int layer, const map_file_walker& walker)
+{
+  FileUnpacker* unpacker = GetUnpacker(layer);
+
+  for (int i = 0; i < unpacker->IndexSize(); ++i) {
+    const char *package_file = unpacker->IndexFile(i);
+
+    if (walker(layer, package_file) != true) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -405,8 +463,8 @@ bool GlcUnpacker::FindLayerFile(const char* file_name,
  * package.
  */
 bool GlcUnpacker::FindFile(const char* file_name,
-                           PackageFileLoc* file_loc) {
-  std::map<std::string, PackageFileLoc>::iterator it;
+                           PackageFileLoc* file_loc) const {
+  std::map<std::string, PackageFileLoc>::const_iterator it;
   it = index_.find(file_name);
   if (it != index_.end()) {
     file_loc->Set(it->second.Offset(), it->second.Size());
@@ -449,8 +507,8 @@ bool GlcUnpacker::FindDbRoot(PackageFileLoc* data_loc) {
  * Get idx-th file in index. Assumes iteration order is stable if
  * index is unchanged.
  */
-const char* GlcUnpacker::IndexFile(int idx) {
-  std::map<std::string, PackageFileLoc>::iterator it;
+const char* GlcUnpacker::IndexFile(int idx) const {
+  std::map<std::string, PackageFileLoc>::const_iterator it;
   it = index_.begin();
   for (int i = 0; (i < idx) && (it != index_.end()); ++i, ++it) ;
 
@@ -517,13 +575,13 @@ std::string GlcUnpacker::ExtractDateFromInfo() {
 /**
  * Calculates a crc for the info data.
  */
-uint32 GlcUnpacker::InfoCrc() {
-  uint32 crc = 0;
+ std::uint32_t GlcUnpacker::InfoCrc() {
+  std::uint32_t crc = 0;
   unsigned char* ptr = reinterpret_cast<unsigned char*>(&info_[0]);
-  for (uint32 i = 0; i < info_.size(); ++i) {
+  for (std::uint32_t i = 0; i < info_.size(); ++i) {
     // Use the full bit space by shifting to one of the
     // four byte boundaries.
-    uint32 value = *ptr++ << ((i & 3) * 8);
+    std::uint32_t value = *ptr++ << ((i & 3) * 8);
     crc += value;
   }
   return crc;
@@ -545,8 +603,39 @@ const char* GlcUnpacker::Id() {
       sstream << "-" << std::hex << InfoCrc();
     }
     sstream << "-" << std::hex << length_;
+    id_ = sstream.str();
   }
 
-  id_ = sstream.str();
   return id_.c_str();
+}
+
+std::map<int, std::string> GlcUnpacker::getKmlData() {
+  std::map<int, std::string> kmlData;
+
+  for (auto &mapLayer : unpacker_index_) {
+    FileUnpacker *layerFile = mapLayer.second;
+    auto layerId = mapLayer.first;
+
+    for (int i = 0; i < layerFile->IndexSize(); ++i) {
+      auto package_file = layerFile->IndexFile(i);
+
+      if (strcmp(package_file, "earth/polygon.kml")) {
+        continue;
+      }
+
+      PackageFileLoc file_loc;
+      if (layerFile->FindFile(package_file, &file_loc)) {
+        auto& kmlDataStr = kmlData[layerId];
+        if (!glc_reader_.Read(&kmlDataStr, file_loc.Offset(), file_loc.Size())) {
+            std::cerr << "Unable to read kml file data." << std::endl;
+        }
+      } else {
+          std::cerr << "Unable to to position to the earth/polygon.kml file data." << std::endl;
+      }
+
+      break;
+    }
+  }
+
+  return kmlData;
 }

@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,16 +31,16 @@ GetFormattedTimeString(time_t timeval)
 }
 
 std::string
-GetFormattedElapsedTimeString(uint elapsed)
+GetFormattedElapsedTimeString(unsigned int elapsed)
 {
   char pretty[256];
   char buf[400];
 
   if (elapsed >= 60) {
-    uint32 sec  = elapsed;
-    uint32 hour = sec/3600;
+    std::uint32_t sec  = elapsed;
+    std::uint32_t hour = sec/3600;
     sec -= hour*3600;
-    uint32 min = sec/60;
+    std::uint32_t min = sec/60;
     sec -= min*60;
     if (hour > 0) {
       snprintf(pretty, sizeof(pretty),
@@ -59,16 +60,16 @@ GetFormattedElapsedTimeString(uint elapsed)
 
 
 void
-GetMinMaxLevels(const std::string &ref, uint &minlevel, uint &maxlevel)
+GetMinMaxLevels(const std::string &ref, unsigned int &minlevel, unsigned int &maxlevel)
 {
   if (AssetVersionRef(ref).Version() == "current") {
     Asset asset(ref);
-    minlevel = asset->meta.GetAs<uint>("minlevel");
-    maxlevel = asset->meta.GetAs<uint>("maxlevel");
+    minlevel = asset->meta.GetAs< unsigned int> ("minlevel");
+    maxlevel = asset->meta.GetAs< unsigned int> ("maxlevel");
   } else {
     AssetVersion version(ref);
-    minlevel = version->meta.GetAs<uint>("minlevel");
-    maxlevel = version->meta.GetAs<uint>("maxlevel");
+    minlevel = version->meta.GetAs< unsigned int> ("minlevel");
+    maxlevel = version->meta.GetAs< unsigned int> ("maxlevel");
   }
 }
 
@@ -102,15 +103,14 @@ varsubst(const std::string &str,
           std::vector<std::string> qualstrs;
           split(result.substr(qualpos+1, end - (qualpos+1)), ":",
                 std::back_inserter(qualstrs));
-          for (std::vector<std::string>::const_iterator q =
-                 qualstrs.begin(); q != qualstrs.end(); ++q) {
+          for(const auto& q : qualstrs) {
             SubstQualMap::const_iterator found =
-              qualifiers.find(*q);
+              qualifiers.find(q);
             if (found != qualifiers.end()) {
               tosubst = (*found->second)(tosubst);
             } else {
               throw khException
-                (kh::tr("Unrecognized qualifier: ") + *q);
+                (kh::tr("Unrecognized qualifier: ").toUtf8().constData() + q);
             }
           }
           result.replace(pos, end - pos + 1, tosubst);

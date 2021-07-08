@@ -68,6 +68,7 @@ commonsources = [ '../third_party/rsa_md5/md5c.c',
                   'geInstallPaths.cpp',
                   'projection.cpp',
                   'ScopeCounter.cpp',
+                  'SharedString.cpp',
                   'SignalHandler.cpp',
                   'compressor.cpp',
                   'tile_resampler.cpp',
@@ -79,20 +80,29 @@ commonsources = [ '../third_party/rsa_md5/md5c.c',
                   'timeutils.cpp',
                   streaming_imagery[0]  # generated .cc file
                  ]
+
+# scons seems to have issues resolving dependencies of dependencies when 
+# the first file is generated (in this case the .cc file). Scons does
+# not seem to properly resolve the .cc file needs the .h file (also generated)
+# and there by this means the .so file needs the .h file too.
+# This can lead to build errors if the generated files are not created
+# soon enough. So adding dependencies explicitly
+streaming_imagery_basename = os.path.splitext(str(streaming_imagery[0]))[0]
+env.Depends(streaming_imagery_basename+'.os', streaming_imagery_basename+'.h')
+env.Depends(streaming_imagery_basename+'.os', streaming_imagery_basename+'.cc')
+
 # Check environment for png.h file
 conf = Configure(env)
 
-if conf.CheckCHeader('libpng12/png.h'):
-    conf.env.Append(CXXFLAGS = '-I/usr/include/libpng12')
-else:
-    print "libpng12 must be installed!"
+if env['png_ver'] == '':
+    print("libpng >= 1.5 must be installed!")
     Exit(1)
 
 env = conf.Finish()
 
 # TODO: consider to move geGdalUtils to khgdal?!
 gecommon = env.sharedLib('gecommon', commonsources,
-                         LIBS = ['keyholeutils', 'geprotobuf', 'z', 'jpeg', 'png12', 'gdal'])
+                         LIBS = ['keyholeutils', 'geprotobuf', 'z', 'jpeg', env['png_ver'], 'gdal', 'libdl', 'boost_filesystem', 'boost_system'])
 
 utilsources = [
     'ff.cpp',
@@ -109,6 +119,7 @@ utilsources = [
     'khPresenceMask.cpp',
     'khCoverageMask.cpp',
     'RuntimeOptions.cpp',
+    'khConfigFileParser.cpp',
     'packet.cpp',
     'filebundle/filebundlewriter.cpp',
     'packetfile/packetindexwriter.cpp',
@@ -130,12 +141,11 @@ utilsources = [
     ]
 # TODO: consider to remove dependency from qt
 geutil = env.sharedLib('geutil', utilsources,
-                       LIBS = ['gecommon', 'qt-mt'])
+                       LIBS = ['gecommon', 'QtGui', 'QtCore'])
 
-# Unit test executables
 env.test('quadtreepath_unittest',
          'quadtreepath_unittest.cpp',
-         LIBS=['geutil', 'gecommon', 'qt-mt'])
+         LIBS=['geutil', 'gecommon', 'QtGui', 'QtCore'])
 
 env.test('crc_unittest',
          '../third_party/rsa_md5/crc_unittest.cpp',
@@ -143,23 +153,23 @@ env.test('crc_unittest',
 
 env.test('filebundle_unittest',
          'filebundle/filebundle_unittest.cpp',
-         LIBS=['geutil', 'gecommon', 'qt-mt'])
+         LIBS=['geutil', 'gecommon', 'QtGui', 'QtCore'])
 
 env.test('cachedreadaccessor_unittest',
          'filebundle/cachedreadaccessor_unittest.cpp',
          LIBS=['gecommon', 'geutil'])
 
 env.test('merge_unittest',
-         'merge/merge_unittest.cpp',
-         LIBS=['gecommon', 'geutil'])
+        'merge/merge_unittest.cpp',
+       LIBS=['gecommon', 'geutil'])
 
 env.test('packetfile_unittest',
-         ['packetfile/packetfile_unittest.cpp'],
+        ['packetfile/packetfile_unittest.cpp'],
          LIBS=['geutil', 'gecommon', 'getests'])
 
 env.test('packetcompress_unittest',
          'packetcompress_unittest.cpp',
-         LIBS=['geutil', 'gecommon', 'qt-mt'])
+         LIBS=['geutil', 'gecommon', 'QtGui', 'QtCore'])
 
 env.test('uuid_unittest',
          '../third_party/rfc_uuid/uuid_unittest.cpp',
@@ -175,7 +185,7 @@ env.test('procpidstats_unittest',
 
 env.test('tile_resampler_unittest',
          'tile_resampler_unittest.cpp',
-         LIBS=['gecommon', 'gtest', 'qt-mt'])
+         LIBS=['gecommon', 'gtest', 'QtGui', 'QtCore'])
 
 env.test('verref_storage_unittest',
          'verref_storage_unittest.cpp',
@@ -188,6 +198,22 @@ env.test('timeutils_unittest',
 env.test('performancelogger_unittest',
          'performancelogger_unittest.cpp',
          LIBS=['gecommon', 'gtest'])
+
+env.test('khThread_unittest',
+         'khThread_unittest.cpp',
+         LIBS=['gecommon', 'gtest', 'rt'])
+
+env.test('khconfigparser_unittest',
+         'khconfigparser_unittest.cpp',
+          LIBS=['geutil', 'gtest'])
+
+env.test('sharedstring_unittest',
+         'sharedstring_unittest.cpp',
+          LIBS=['geutil', 'gtest', 'gecommon'])
+
+env.test('khTileAddr_unittest',
+         'khTileAddr_unittest.cpp',
+          LIBS=['geutil', 'gtest', 'gecommon'])
 
 env.install('common_lib', [gecommon])
 env.install('common_lib', [geutil])

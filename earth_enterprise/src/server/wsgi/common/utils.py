@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2.7
 #
 # Copyright 2017 Google Inc.
 #
@@ -23,7 +23,8 @@ import logging
 import re
 import socket
 import urllib2
-import xml.sax.saxutils as saxutils
+from xml.sax.saxutils import escape
+from geAbstractionFetcher import GetHostName
 
 GEHTTPD_CONF_PATH = "/opt/google/gehttpd/conf/gehttpd.conf"
 POSTGRES_PROPERTIES_PATH = (
@@ -112,7 +113,7 @@ def GetSchemeHostPort(environ):
 
 def GetServerHost():
   """Gets fully quailified domain name."""
-  return socket.getfqdn()
+  return GetHostName(True)
 
 
 def GetApacheServerUrl():
@@ -155,11 +156,11 @@ def BuildServerUrl(host_):
     server URL in format scheme://host_[:port]
   """
   assert host_
-  scheme_host_port = GetApacheSchemeHostPortFromListen()
-  if not scheme_host_port:
+  scheme_port = GetApacheSchemePortFromListen()
+  if not scheme_port:
     return None
 
-  (scheme, port) = scheme_host_port[0], scheme_host_port[2]
+  (scheme, port) = scheme_port[0], scheme_port[1]
   assert scheme
   assert port
 
@@ -173,50 +174,48 @@ def BuildServerUrl(host_):
 def GetApacheSchemeHostPort():
   """Gets scheme, host and port number that Apache is running on.
 
-  Gets scheme, host and port number based on information specified in Apache
-  config (Listen, ServerName directives) and FQDN.
+  Gets scheme and port number based on information specified in Apache
+  config (Listen, ServerName directives). get host using ServerName or FQDN.
 
   Returns:
     tuple (scheme, host, port number) that Apache is running on or None.
   """
-  # Get (scheme, host, port) from Listen directive, which is required in httpd
+  # Get (scheme, port) from Listen directive, which is required in httpd
   # config.
-  scheme_host_port = GetApacheSchemeHostPortFromListen()
-  if not scheme_host_port:
+  scheme_port = GetApacheSchemePortFromListen()
+  if not scheme_port:
     return None
 
-  (scheme, host, port) = scheme_host_port
+  (scheme, port) = scheme_port
   assert scheme
   assert port
 
-  if not host:
-    # Get host from ServerName directive of httpd config or use FQDN.
-    host = GetApacheServerHost()
+  # Get host from ServerName directive of httpd config, otherwise uses FQDN.
+  host = GetApacheServerHost()
 
   return (scheme, host, port)
 
 
-def GetApacheSchemeHostPortFromListen():
-  """Gets scheme, host, port number that Apache is running on.
+def GetApacheSchemePortFromListen():
+  """Gets scheme, port number that Apache is running on.
 
-  Gets scheme, host and port number from Listen directive of httpd config file:
+  Gets scheme and port number from Listen directive of httpd config file:
   Format of Listen directive:
   Listen [IP-address:]portnumber [protocol]
   Note: IPv6 addresses must be surrounded in square brackets:
   Listen [2001:db8::a00:20ff:fea7:ccea]:80
   Returns:
-    tuple (scheme, host, port number) that Apache is listening on or None.
-    Note: if host is undefined, then it will return (scheme, None, port) tuple.
+    tuple (scheme, port number) that Apache is listening on or None.
   """
   match = MatchPattern(
       GEHTTPD_CONF_PATH,
       r"^Listen\s+(?:\[?([a-fA-F\d\.\:]+)\]?:)?(\d+)(?:\s+(https?))?")
   if match:
-    (scheme, host, port) = (match[2], match[0], match[1])
+    (scheme, port) = (match[2], match[1])
     assert port
     if not scheme:
       scheme = "https" if port == "443" else "http"
-    return (scheme, host, port)
+    return (scheme, port)
 
   logging.error("Listen directive is not specified in gehttpd config.")
   return None
@@ -276,6 +275,43 @@ def GetPostgresPortNumber():
   return None
 
 
+def GetPostgresHost():
+  """Get postgres host for remote connections
+
+  Returns:
+    Host name of remote database to connect to or None.
+  """
+  pattern = r"^\s*host\s*=\s*(\d{4,})\s*"
+
+  match = MatchPattern(POSTGRES_PROPERTIES_PATH, pattern)
+  if match:
+    host = match[0]
+    return host
+
+  return None
+
+
+def GetPostgresPassword():
+  """Get geuser role password for remote connections
+
+  Returns:
+    Password for remote geuser role or None.
+  """
+  pattern = r"^\s*pass\s*=\s*(\d{4,})\s*"
+  match = MatchPattern(POSTGRES_PROPERTIES_PATH, pattern)
+  if match:
+    password = match[0]
+    return password
+
+  pattern = r"^\s*password\s*=\s*(\d{4,})\s*"
+  match = MatchPattern(POSTGRES_PROPERTIES_PATH, pattern)
+  if match:
+    password = match[0]
+    return password
+
+  return None
+
+
 def HtmlEscape(text):
   """Escapes a string for HTML.
 
@@ -284,7 +320,7 @@ def HtmlEscape(text):
   Returns:
     HTML escaped string.
   """
-  return saxutils.escape(text, _HTML_ESCAPE_TABLE)
+  return escape(text, _HTML_ESCAPE_TABLE)
 
 
 def JoinQueryStrings(a, b):

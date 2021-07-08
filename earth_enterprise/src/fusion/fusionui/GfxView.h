@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +19,12 @@
 #ifndef _GfxView_h_
 #define _GfxView_h_
 
-#include <qgl.h>
-#include <qaction.h>
-
+#include <Qt/qobjectdefs.h>
+#include <Qt/qgl.h>
+#include <Qt/q3action.h>
+#include <Qt/qevent.h>
 #include <gstGeode.h>
-
+#include <Qt/q3combobox.h>
 class gstTextureManager;
 class TexTile;
 class QTimer;
@@ -50,6 +52,7 @@ class GfxView : public QGLWidget {
   static GfxView* instance;
 
   GfxView(QWidget* parent, const char *name);
+  GfxView(QWidget* parent);
   ~GfxView(void);
 
   gstDrawState* state() { return &state_; }
@@ -199,7 +202,7 @@ class GfxView : public QGLWidget {
     None = 3
   };
 
-  uint32 alpha_mode_;
+  std::uint32_t alpha_mode_;
 
   double tex_stat_[STAT_FRAME];
   double geom_stat_[STAT_FRAME];

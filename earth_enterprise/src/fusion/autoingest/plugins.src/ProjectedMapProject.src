@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -64,7 +65,7 @@ ProjectedMapProjectAssetVersionImpl::GetPOIFiles(
     std::vector<std::string> &out) const
 {
   // skip index, the rest are our layer children
-  for (uint i = 0; i < children.size(); ++i) {
+  for (unsigned int i = 0; i < children.size(); ++i) {
     AssetVersion tmpchild(children[i]);
     if (tmpchild->subtype == "ProjectedLayer") {
       ProjectedMapLayerAssetVersion layer(children[i]);
@@ -118,7 +119,7 @@ ProjectedMapProjectAssetVersionImplD::UpdateChildren(void)
   const MapProjectConfig &proj_config = map_project->config;
 
   // track which of my layers actually get indexed
-  std::vector<uint> used_layers;
+  std::vector< unsigned int>  used_layers;
   used_layers.reserve(proj_config.layers.size());
   std::vector<LayerLegend> used_legends;
   used_legends.reserve(proj_config.layers.size());
@@ -134,11 +135,11 @@ ProjectedMapProjectAssetVersionImplD::UpdateChildren(void)
     std::string geindexAssetName(MapGEIndexFactory::SubAssetName(assetRef,
                                                                  "geindex"));
     std::vector<AssetVersion> index_input_vers;
-    std::vector<std::string> index_input_refs;
+    std::vector<SharedString> index_input_refs;
 
     std::string dbname = khDropExtension(khBasename(assetRef));
     geindexConfig.db_name_ = dbname;
-    uint indexVer = config.index_version_;
+    unsigned int indexVer = config.index_version_;
     bool tryReuse = true;
     if (indexVer == 0) {
       // zero is a sentinal value that means we've wrapped and
@@ -155,8 +156,8 @@ ProjectedMapProjectAssetVersionImplD::UpdateChildren(void)
     // Prefill the geindex config with the verrefs of my MapLayerLevel
     // grandkids. Initialize the index_version_'s to my index_version_
     geindexConfig.layers_.reserve(proj_config.layers.size());
-    uint not_skipped_count = 0;
-    for (uint l = 0; l < proj_config.layers.size(); ++l, ++not_skipped_count) {
+    unsigned int not_skipped_count = 0;
+    for (unsigned int l = 0; l < proj_config.layers.size(); ++l, ++not_skipped_count) {
       if (proj_config.layers[l].skipLayer) {
         continue;
       }
@@ -180,9 +181,9 @@ ProjectedMapProjectAssetVersionImplD::UpdateChildren(void)
         AssetDefs::NormalizeAssetName(projected_layer_name, AssetDefs::Map,
                                       "ProjectedLayer");
       MutableProjectedMapLayerAssetVersionD layerver =
-        ProjectedMapLayerFactory::FindMakeAndUpdate(
+        FindMakeAndUpdate<ProjectedMapLayerType>(
             projected_layer_name,
-            makevec1(base_layer_ver->GetRef()),
+            makevec1<SharedString>(base_layer_ver->GetRef()),
             khMetaData(),
             ProjectedMapLayerConfig(config.projection_),
             makevec1<AssetVersion>(base_layer_ver));
@@ -207,16 +208,14 @@ ProjectedMapProjectAssetVersionImplD::UpdateChildren(void)
                                     geindex::TypedEntry::VectorMapsRaster));
         geindexConfig.layers_.back().levels_.reserve(
             layerver->children.size());
-        for (std::vector<std::string>::const_iterator levelverref =
-               layerver->children.begin();
-             levelverref != layerver->children.end(); ++levelverref) {
-          AssetVersion ver(*levelverref);
+        for (const auto &levelverref : layerver->children) {
+          AssetVersion ver(levelverref);
           if (ver->subtype != "MapLayerLevel") {
             // we've traversed past all our level children, stop looking
             break;
           }
           geindexConfig.layers_.back().levels_.push_back(
-              MapGEIndexConfig::Level(*levelverref));
+              MapGEIndexConfig::Level(levelverref));
         }
       }
     }
@@ -229,7 +228,8 @@ ProjectedMapProjectAssetVersionImplD::UpdateChildren(void)
       }
     }
     MutableAssetVersionD geindex =
-      MapGEIndexFactory::FindMakeAndUpdate(geindexAssetName,
+      FindMakeAndUpdate<MapGEIndexType>
+                                          (geindexAssetName,
                                            index_input_refs,
                                            khMetaData(),
                                            geindexConfig,
@@ -245,7 +245,7 @@ ProjectedMapProjectAssetVersionImplD::UpdateChildren(void)
                                                                  "layerjs"));
     MapLayerJSConfig layerJSConfig;
     layerJSConfig.layers_.reserve(used_layers.size());
-    for (uint i = 0; i < used_layers.size(); ++i) {
+    for (unsigned int i = 0; i < used_layers.size(); ++i) {
       layerJSConfig.layers_.push_back(
           MapLayerJSConfig::Layer(
               MapLayerJSConfig::Layer::VectorRaster,
@@ -257,8 +257,9 @@ ProjectedMapProjectAssetVersionImplD::UpdateChildren(void)
               used_legends[i]));
     }
     MutableAssetVersionD layerjs =
-      MapLayerJSFactory::FindMakeAndUpdate(layerJSAssetName,
-                                           std::vector<std::string>(),
+      FindMakeAndUpdate<MapLayerJSType>
+                                          (layerJSAssetName,
+                                           std::vector<SharedString>(),
                                            khMetaData(),
                                            layerJSConfig,
                                            std::vector<AssetVersion>());
@@ -268,4 +269,3 @@ ProjectedMapProjectAssetVersionImplD::UpdateChildren(void)
 
   AddChildren(projected_layer_kids);
 }
-

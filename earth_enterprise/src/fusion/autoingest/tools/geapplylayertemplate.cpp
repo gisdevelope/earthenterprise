@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,7 +63,7 @@ main(int argc, char *argv[]) {
     bool debug = false;
     bool help = false;
     std::string layername;
-    uint layerid = 0;
+    unsigned int layerid = 0;
     std::string project;
     std::string templatename;
     bool        applyDisplayRules = false;
@@ -97,7 +98,7 @@ main(int argc, char *argv[]) {
     }
     QString qlayername = QString::fromUtf8(layername.c_str());
     qlayername.replace("&#47;", "/");
-    layername = qlayername.utf8();
+    layername = qlayername.toUtf8().constData();
     if (project.empty()) {
       usage(progname, "--project not specified");
     }
@@ -123,7 +124,7 @@ main(int argc, char *argv[]) {
     for (std::vector<LayerConfig>::iterator layer = vconfig.layers.begin();
          layer != vconfig.layers.end(); ++layer) {
       if (((layerid != 0) && (layer->channelId == layerid)) ||
-          (layer->DefaultNameWithPath() == layername)) {
+          (layer->DefaultNameWithPath() == layername.c_str())) {
 
         layer->ApplyTemplate(tmplConfig, applyDisplayRules, applyLegend);
 

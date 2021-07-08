@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,11 +44,15 @@ class ProductLevelReaderCache
     const khRasterProductLevel *prodLevel;
 
    public:
+    /// determine amount of memory used by CachedReaderImpl
+    std::uint64_t GetSize() {
+      return sizeof(prodLevel);
+    }
     inline CachedReaderImpl(const khRasterProductLevel *plev) :
         prodLevel(plev) {
       if (!prodLevel->OpenReader()) {
         throw khException(kh::tr("Unable to open product %1 level %2")
-                          .arg(prodLevel->product()->name())
+                          .arg(prodLevel->product()->name().c_str())
                           .arg(prodLevel->levelnum()));
       }
     }
@@ -57,12 +62,12 @@ class ProductLevelReaderCache
 
     template <class DestTile>
     inline void
-    ReadTile(uint32 row, uint32 col, DestTile &dest) const {
+    ReadTile(std::uint32_t row, std::uint32_t col, DestTile &dest) const {
       if (!prodLevel->ReadTile(row, col, dest)) {
         throw khException
           (kh::tr("Unable to read tile (lrc) %1,%2,%3 %4")
            .arg(prodLevel->levelnum()).arg(row).arg(col)
-           .arg(prodLevel->product()->name()));
+           .arg(prodLevel->product()->name().c_str()));
       }
     }
   };
@@ -72,12 +77,12 @@ class ProductLevelReaderCache
   mutable khCache<const khRasterProductLevel*, CachedReader> cache;
 
  public:
-  inline ProductLevelReaderCache(uint cacheSize) : cache(cacheSize) { }
+  inline ProductLevelReaderCache(unsigned int cacheSize) : cache(cacheSize, "product level reader") { }
 
   template <class DestTile>
   inline void
   ReadTile(const khRasterProductLevel* plev,
-           uint32 row, uint32 col, DestTile &dest) const {
+           std::uint32_t row, std::uint32_t col, DestTile &dest) const {
     CachedReader found;
     if (!cache.Find(plev, found)) {
       found = khRefGuardFromNew(new CachedReaderImpl(plev));

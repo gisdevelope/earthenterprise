@@ -41,7 +41,7 @@ class gstFileInfo {
   void SetExtension(const char*);
 
   gstStatus status() { initstat(); return status_; }
-  int64 size() { initstat(); return size_; }
+  std::int64_t size() { initstat(); return size_; }
   time_t atime() { initstat(); return atime_; }
   time_t mtime() { initstat(); return mtime_; }
   time_t ctime() { initstat(); return ctime_; }
@@ -59,7 +59,7 @@ class gstFileInfo {
   gstStatus status_;
 
   // taken straight from the stat structure
-  int64 size_;     // total size, in bytes
+  std::int64_t size_;     // total size, in bytes
   time_t atime_;   // time of last access
   time_t mtime_;   // time of last modification
   time_t ctime_;   // time of last change
@@ -70,11 +70,16 @@ class gstFileInfo {
 
 class gstFileIO {
  public:
-  gstFileIO(int, ssize_t sz, char* buf = NULL);
+  gstFileIO(int, ssize_t sz, char* buf = nullptr);
   ~gstFileIO();
 
-  gstStatus write(int64 pos);
-  gstStatus read(int64 pos);
+  gstFileIO(const gstFileIO&) = delete;
+  gstFileIO(gstFileIO&&) = delete;
+  gstFileIO& operator=(const gstFileIO&) = delete;
+  gstFileIO& operator=(gstFileIO&&) = delete;
+
+  gstStatus write(std::int64_t pos);
+  gstStatus read(std::int64_t pos);
 
   gstStatus status() const { return status_; }
 

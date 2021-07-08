@@ -42,7 +42,6 @@ class KMLProjectAssetImplD {
 
 
 // ===== KMLProjectAssetD.cpp =====
-//#include <autoingest/sysman/plugins/KMLLayerAssetD.h>
 
 void
 KMLProjectAssetImplD::SyncInputRefs(void)
@@ -80,11 +79,11 @@ KMLProjectAssetImplD::HandleEditRequest(const KMLProjectEditRequest &req)
                       AssetDefs::FileExtension(AssetDefs::KML,
                                                kProjectSubtype));
   // will be filled in later
-  std::vector<std::string> inputs;
+  std::vector<SharedString> inputs;
 
   // custom FindMake - modified to set/preserve indexVersion
   KMLProjectConfig projConfig = req.config;
-  MutableKMLProjectAssetD project = KMLProjectFactory::Find(projname);
+  MutableKMLProjectAssetD project = Find<KMLProjectType>(projname);
   if (project) {
     // We must preserve the indexVersion since the GUI doesn't/can't.
     // We really should split this KMLProjectConfig into two pieces.
@@ -92,13 +91,15 @@ KMLProjectAssetImplD::HandleEditRequest(const KMLProjectEditRequest &req)
     project->Modify(inputs, req.meta, projConfig);
   } else {
     assert(projConfig.indexVersion == 1);
-    project = KMLProjectFactory::Make(projname, inputs,
-                                      req.meta, projConfig);
+    project = Make<KMLProjectType>(projname, inputs,
+                                                 req.meta, projConfig);
   }
 
-  if (!project)
-    throw khException(kh::tr("Unable to create KML project: ") +
-                      projname);
+  if (!project) {
+    std::string msg { kh::tr("Unable to create KML project: ").toUtf8().constData() };
+    msg += projname;
+    throw khException(msg.c_str());
+  }
 
   //project->config.AssignChannelIdsIfZero();
   project->SyncInputRefs();
@@ -111,4 +112,3 @@ KMLProjectAssetVersionImplD::UpdateChildren(void)
 {
   throw khException(kh::tr("KMLProject::UpdateChildren not implemented"));
 }
-

@@ -116,7 +116,7 @@ ValidateVolume(const std::string &volname)
 {
   if (theVolumeManager.GetVolumeDef(volname) == 0) {
     throw khException(kh::tr("Unknown volume '%1' specified with --vol")
-                      .arg(volname));
+                      .arg(volname.c_str()));
   }
 }
 
@@ -128,7 +128,7 @@ ValidateAssetVer(const std::string &verstr)
   AssetVersion assetver(verref);
   if (!assetver) {
     throw khException(kh::tr("Unknown asset version '%1' specified with --assetver")
-                      .arg(verstr));
+                      .arg(verstr.c_str()));
   }
 }
 
@@ -229,7 +229,7 @@ FindFilesOnVol(const std::string &verref,
   AssetVersion version(verref);
   if (!version) {
     notify(NFY_WARN, "Unable to load asset version %s",
-           version.Ref().c_str());
+           version.Ref().toString().c_str());
   }
 
   RebuildNode *node = new RebuildNode(verref, currentStack);
@@ -268,18 +268,14 @@ FindFilesOnVol(const std::string &verref,
     }
   }
 
-  for (std::vector<std::string>::const_iterator input =
-         version->inputs.begin();
-       input != version->inputs.end(); ++input) {
-    FindFilesOnVol(*input, volset, seen,
+  for (const auto &input : version->inputs) {
+    FindFilesOnVol(input, volset, seen,
                    found, currentStack,
                    count, interval);
   }
   if (!version->IsLeaf()) {
-    for (std::vector<std::string>::const_iterator child =
-           version->children.begin();
-         child != version->children.end(); ++child) {
-      FindFilesOnVol(*child, volset, seen,
+    for (const auto &child: version->children) {
+      FindFilesOnVol(child, volset, seen,
                      found, currentStack,
                      count, interval);
     }

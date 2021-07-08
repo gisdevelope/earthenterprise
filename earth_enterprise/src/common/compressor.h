@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +24,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <khTypes.h>
+#include <cstdint>
 #include <GL/gl.h>
 #include <khGuard.h>
 #include <third_party/rsa_md5/crc32.h>
@@ -55,15 +57,15 @@ enum CompressMode {
 inline std::string CompressModeName(CompressMode t) {
   switch (t) {
     case CompressNone:
-      return "None";
+      return std::string("None");
     case CompressLZ:
-      return "LZ";
+      return std::string("LZ");
     case CompressJPEG:
-      return "JPEG";
+      return std::string("JPEG");
     case CompressDXT1:
-      return "DXT1";
+      return std::string("DXT1");
     case CompressPNG:
-      return "PNG";
+      return std::string("PNG");
   }
   return std::string(); // unreached but silences warnings
 }
@@ -86,19 +88,19 @@ class Compressor {
   // compressed data can be accessed by calling
   // the data() and dataLen() member functions
   // returns num bytes in result buffer, or 0 on error
-  virtual uint32 compress(const char *inbuf) = 0;
+  virtual std::uint32_t compress(const char *inbuf) = 0;
 
   // inbuf = incoming compressed data
   // inbufSize = space used by incoming compressed data in bytes
   // outbuf = output buffer sufficiently sized to hold uncompressed data
   // returns num bytes in result buffer, or zero on error
-  virtual uint32 decompress(char *inbuf, int inbufSize, char *outbuf) = 0;
+  virtual std::uint32_t decompress(char *inbuf, int inbufSize, char *outbuf) = 0;
 
   // pointer to compressed data, and it's size in bytes
   // used only by the compressor
   virtual char *data() = 0;
-  virtual uint32 dataLen() = 0;
-  virtual uint32 bufSize() = 0;
+  virtual std::uint32_t dataLen() = 0;
+  virtual std::uint32_t bufSize() = 0;
 
   virtual bool IsValid() { return true; }
 
@@ -125,12 +127,12 @@ struct WriteBuffer : public jpeg_destination_mgr {
   size_t bufSize;
   static const size_t reserve_size = kCRC32Size;
 
-  WriteBuffer(size_t bsz, char *pakbuf = NULL) : bufSize(bsz) {
+  WriteBuffer(size_t bsz, char *pakbuf = nullptr) : bufSize(bsz) {
     init_destination = initDestination;
     empty_output_buffer = emptyOutputBuffer;
     term_destination = termDestination;
 
-    if (pakbuf == NULL) {
+    if (pakbuf == nullptr) {
       buf = new char[bufSize + reserve_size];
       track_buf_mem_ = true;
     } else {
@@ -175,7 +177,7 @@ struct ReadBuffer : public jpeg_source_mgr {
     resync_to_restart = jpeg_resync_to_restart;
     term_source = termSource;
     bytes_in_buffer = 0;
-    next_input_byte = NULL;
+    next_input_byte = nullptr;
     buf = (JOCTET*)data;
   }
 
@@ -184,7 +186,7 @@ struct ReadBuffer : public jpeg_source_mgr {
   static void initSource(j_decompress_ptr cinfo) { ; }
 
   static boolean fillInputBuffer(j_decompress_ptr cinfo) {
-    ReadBuffer* src = (ReadBuffer*)cinfo->src;
+    ReadBuffer* src = static_cast<ReadBuffer*>(cinfo->src);
     src->next_input_byte = &src->buf[0];
     src->bytes_in_buffer = src->bufSize;
     return TRUE;
@@ -199,21 +201,27 @@ struct ReadBuffer : public jpeg_source_mgr {
 
 class JPEGCompressor : public Compressor {
  public:
-  JPEGCompressor(uint32 w, uint32 h, uint c, int quality);
+  JPEGCompressor(std::uint32_t w, std::uint32_t h, unsigned int c, int quality);
   virtual ~JPEGCompressor();
+
+  // do not allow copying/moving
+  JPEGCompressor(const JPEGCompressor&) = delete;
+  JPEGCompressor(JPEGCompressor&&) = delete;
+  JPEGCompressor& operator=(const JPEGCompressor&) = delete;
+  JPEGCompressor& operator=(JPEGCompressor&&) = delete;
 
   virtual char* data() { return writer_->buf; }
 
-  virtual uint32 dataLen() { return writer_->bufSize - writer_->free_in_buffer; }
-  virtual uint32 bufSize() { return writer_->bufSize + writer_->reserve_size; }
+  virtual std::uint32_t dataLen() { return writer_->bufSize - writer_->free_in_buffer; }
+  virtual std::uint32_t bufSize() { return writer_->bufSize + writer_->reserve_size; }
 
-  virtual uint32 compress(const char *inbuf);
-  virtual uint32 decompress(char *inbuf, int inbufSize, char *outbuf);
+  virtual std::uint32_t compress(const char *inbuf);
+  virtual std::uint32_t decompress(char *inbuf, int inbufSize, char *outbuf);
 
   virtual bool IsValid() { return valid_; }
 
   // after construction, returns size of a single image tile
-  uint32 cellSize() { return width_ * height_ * comp_; }
+  std::uint32_t cellSize() { return width_ * height_ * comp_; }
 
   // JPEGCompressor can encode jpeg comments.
   // This needs to be called before pulling data() and dataLen().
@@ -239,9 +247,9 @@ class JPEGCompressor : public Compressor {
   // init the error handler, used by both compress & decompress
   ErrorMgr error_mgr_;
 
-  uint32 width_;
-  uint32 height_;
-  uint   comp_;
+  std::uint32_t width_;
+  std::uint32_t height_;
+  unsigned int   comp_;
 
   bool valid_;
 };
@@ -252,22 +260,27 @@ class JPEGCompressor : public Compressor {
 // calling the supplied compressor
 class MinifyCompressor : public Compressor {
  public:
-  MinifyCompressor(Compressor* c, uint32 width, uint32 height, uint comp);
+  MinifyCompressor(Compressor* c, std::uint32_t width, std::uint32_t height, unsigned int comp);
   virtual ~MinifyCompressor();
+
+  MinifyCompressor(const MinifyCompressor&) = delete;
+  MinifyCompressor(MinifyCompressor&&) = delete;
+  MinifyCompressor& operator=(const MinifyCompressor&) = delete;
+  MinifyCompressor& operator=(MinifyCompressor&&) = delete;
 
   virtual char* data() { return compressor_->data(); }
 
-  virtual uint32 dataLen() { return compressor_->dataLen(); }
-  virtual uint32 bufSize() { return compressor_->bufSize(); }
+  virtual std::uint32_t dataLen() { return compressor_->dataLen(); }
+  virtual std::uint32_t bufSize() { return compressor_->bufSize(); }
 
-  virtual uint32 compress(const char *inbuf);
-  virtual uint32 decompress(char *inbuf, int inbufSize, char *outbuf);
+  virtual std::uint32_t compress(const char *inbuf);
+  virtual std::uint32_t decompress(char *inbuf, int inbufSize, char *outbuf);
 
  private:
   Compressor* compressor_;
-  uint32 width_;        // incoming width
-  uint32 height_;       // incoming height
-  uint comp_;           // number of components
+  std::uint32_t width_;        // incoming width
+  std::uint32_t height_;       // incoming height
+  unsigned int comp_;           // number of components
   char* small_buffer_;  // space to minify
 };
 
@@ -275,7 +288,7 @@ class DXT1Compressor : public Compressor {
  public:
   struct S3TC_CELL {
     GLushort c[2];    // interpolant endpoints (565)
-    uint32    idx;    // 4x4x2-bits/pixel index array
+    std::uint32_t    idx;    // 4x4x2-bits/pixel index array
   };
 
   struct Color8888 {
@@ -286,8 +299,8 @@ class DXT1Compressor : public Compressor {
   };
 
   struct Header {
-    uint32 magic;
-    uint32 checksum;
+    std::uint32_t magic;
+    std::uint32_t checksum;
   };
 
   DXT1Compressor(GLenum f, GLenum t, int width, int height);
@@ -296,13 +309,13 @@ class DXT1Compressor : public Compressor {
   virtual char* data() { return compress_buff; }
 
   // DXT1 has a fixed compression ratio, so these will always be the same
-  virtual uint32 dataLen() { return sizeof(Header) + ((width * height) >> 1); }
-  virtual uint32 bufSize() { return dataLen() + reserve_size; }
+  virtual std::uint32_t dataLen() { return sizeof(Header) + ((width * height) >> 1); }
+  virtual std::uint32_t bufSize() { return dataLen() + reserve_size; }
 
-  virtual uint32 compress(const char* inbuf);
-  virtual uint32 decompress(char* inbuf, int inbufSize, char* outbuf);
+  virtual std::uint32_t compress(const char* inbuf);
+  virtual std::uint32_t decompress(char* inbuf, int inbufSize, char* outbuf);
 
-  static uint32 kMagic;
+  static std::uint32_t kMagic;
 
  private:
   GLenum format;
@@ -319,17 +332,17 @@ class DXT1Compressor : public Compressor {
 
 //---------------------------------------------------------------------------
 
-Compressor* NewLZCompressor(int level, uint32 uncompressed_buff_size);
+Compressor* NewLZCompressor(int level, std::uint32_t uncompressed_buff_size);
 
 
 // input_buf_width: 0 -> use width
 //                : >0  -> input buffer is larger than target width
 //                : <0  -> input buffer is larger and we're flipping Y axis
-static const uint PNGOPT_BGR = 1;
-static const uint PNGOPT_SWAPALPHA = 2;
-Compressor* NewPNGCompressor(uint32 width, uint32 height, uint32 comp,
-                             uint options = 0,
-                             int32 input_buf_width = 0,
+static const unsigned int PNGOPT_BGR = 1;
+static const unsigned int PNGOPT_SWAPALPHA = 2;
+Compressor* NewPNGCompressor(std::uint32_t width, std::uint32_t height, std::uint32_t comp,
+                             unsigned int options = 0,
+                             std::int32_t input_buf_width = 0,
                              int compression_level = Z_DEFAULT_COMPRESSION);
 
 #endif  // !KHSRC_COMMON_COMPRESSOR_H__

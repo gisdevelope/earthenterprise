@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +15,7 @@
 
 
 #include <autoingest/.idl/storage/LayerLegend.h>
+#requiresgetheapusage
 
 #cppquote
 #include <autoingest/.idl/storage/LayerLegend_impl.h>
@@ -33,23 +35,24 @@ class MapLayerJSConfig {
 
     Type        type_ = MapLayerJSConfig::Layer::UndefinedType;
     Projection  projection_ = MapLayerJSConfig::Layer::UndefinedProjection;
-    uint        channel_id_ = uint(0);
-    uint        index_version_ = uint(0);
+    unsigned int        channel_id_ = uint(0);
+    unsigned int        index_version_ = uint(0);
     LayerLegend legend_ = LayerLegend();
 
 #pragma GenerateIsUpToDate
 
-#hquote
- public:
-   // Converts a projection type to its string representation in maps.json.
-   std::string ProjectionToString() const;
-   static std::string ProjectionToString(const Projection projection);
-
-#/hquote
+  #hquote
+   public:
+     // Converts a projection type to its string representation in maps.json.
+     std::string ProjectionToString() const;
+     static std::string ProjectionToString(const Projection projection);
+  
+  #/hquote
 
   };
 
   std::vector<Layer> layers_;
+
 
 #pragma GenerateIsUpToDate
 #pragma LoadAndSave

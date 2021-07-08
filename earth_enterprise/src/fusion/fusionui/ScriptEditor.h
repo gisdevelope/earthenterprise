@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Google Inc.
+ * Copyright 2020 The Open GEE Contributors 
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +22,14 @@
 
 #include <vector>
 #include <map>
-
-#include <qstring.h>
-#include <qstringlist.h>
+#include <Qt/qobjectdefs.h>
+#include <Qt/qstring.h>
+#include <Qt/qstringlist.h>
 #include "scripteditorbase.h"
 #include <gstRecord.h>
 #include <gstSourceManager.h>
+#include <Qt/q3listbox.h>
+using QListBoxItem = Q3ListBoxItem;
 
 class gstFormat;
 
@@ -60,7 +63,7 @@ class ScriptEditor : public ScriptEditorBase {
   gstHeaderHandle recordHeader;
   int currField;
   QStringList contextScripts;
-  typedef std::map<uint, QStringList*> ValueCache;
+  typedef std::map<unsigned int, QStringList*> ValueCache;
   ValueCache cachedValues;
   std::vector<QString> insertFieldText;
 };

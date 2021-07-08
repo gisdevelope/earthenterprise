@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2.7
 #
 # Copyright 2017 Google Inc.
 #
@@ -149,6 +149,32 @@ class PublishManagerHelper(stream_manager.StreamManager):
         PublishManagerHelper.TARGET_PATH_TEMPL.format(
             db_publish_path, target_path))
 
+  def IsDefaultDatabase(self, publish_context_id):
+    """
+    Checks whether the passed-in database is the default database or not. When
+    upgrading from older releases such as 5.1.2, the publish_context_table may
+    not have an entry for a published database, so we have to perform two
+    queries: one to get the list of databases and one to check if each database
+    is the default. It would simplify things somewhat to move the ec_default_db
+    field to the target_table database so that we can get all the data we want
+    with a single query. However, this would make the upgrade code more
+    complicated because we would have to manage 3 schemas: one from before we
+    added ec_default_db and two with the ec_default_db in different places.
+    This method seems to be the simplest overall option even though it requires
+    multiple queries.
+    """
+    if publish_context_id != 0: # Ensure the publish_context_id is valid
+      query_string = ("""
+          SELECT publish_context_table.ec_default_db
+          FROM publish_context_table
+          WHERE publish_context_table.publish_context_id = %s AND
+          publish_context_table.ec_default_db = TRUE
+          """)
+      results = self.DbQuery(query_string, (publish_context_id,))
+      if results:
+        return True
+    return False
+
   def HandleQueryRequest(self, request, response):
     """Handles query requests.
 
@@ -225,7 +251,8 @@ class PublishManagerHelper(stream_manager.StreamManager):
             virtual_host_table.virtual_host_name,
             virtual_host_table.virtual_host_url,
             virtual_host_table.virtual_host_ssl,
-            target_table.target_path, target_table.serve_wms
+            target_table.target_path, target_table.serve_wms,
+            target_db_table.publish_context_id
           FROM target_table, target_db_table, db_table, virtual_host_table
           WHERE target_table.target_path = %s AND
             target_table.target_id = target_db_table.target_id AND
@@ -239,7 +266,8 @@ class PublishManagerHelper(stream_manager.StreamManager):
         assert isinstance(results, list) and len(results) == 1
         (r_host_name, r_db_path, r_db_name, r_db_timestamp, r_db_size,
          r_virtual_host_name, r_virtual_host_url, r_virtual_host_ssl,
-         r_target_path, r_serve_wms) = results[0]
+         r_target_path, r_serve_wms, publish_context_id) = results[0]
+        r_default_database = self.IsDefaultDatabase(publish_context_id)
 
         db_info = basic_types.DbInfo()
         # TODO: make re-factoring - implement some Set function
@@ -259,6 +287,7 @@ class PublishManagerHelper(stream_manager.StreamManager):
                                                     r_virtual_host_ssl)
         db_info.target_path = r_target_path
         db_info.serve_wms = r_serve_wms
+        db_info.default_database = r_default_database
         db_info.registered = True
 
         # Calculate database attributes.
@@ -653,8 +682,7 @@ class PublishManagerHelper(stream_manager.StreamManager):
     query_string = ("""SELECT publish_context_table.snippets_set_name,
            publish_context_table.search_def_names,
            publish_context_table.supplemental_search_def_names,
-           publish_context_table.poifederated, 
-           publish_context_table.ec_default_db
+           publish_context_table.poifederated
            FROM target_table, target_db_table, publish_context_table
            WHERE target_table.target_path = %s AND
                  target_table.target_id = target_db_table.target_id AND
@@ -1071,10 +1099,10 @@ class PublishManagerHelper(stream_manager.StreamManager):
       http_io.ResponseWriter.AddJsonFailureBody(response, str(e))
     except psycopg2.Warning as w:
       logger.error(w)
-      http_io.ResponseWriter.AddJsonFailureBody(response, str(e))
+      http_io.ResponseWriter.AddJsonFailureBody(response, str(w))
     except psycopg2.Error as e:
       logger.error(e)
-      http_io.ResponseWriter.AddJsonFailureBody(response, str(w))
+      http_io.ResponseWriter.AddJsonFailureBody(response, str(e))
     except Exception as e:
       logger.error(e)
       http_io.ResponseWriter.AddJsonFailureBody(
@@ -1100,10 +1128,10 @@ class PublishManagerHelper(stream_manager.StreamManager):
       http_io.ResponseWriter.AddJsonFailureBody(response, str(e))
     except psycopg2.Warning as w:
       logger.error(w)
-      http_io.ResponseWriter.AddJsonFailureBody(response, str(e))
+      http_io.ResponseWriter.AddJsonFailureBody(response, str(w))
     except psycopg2.Error as e:
       logger.error(e)
-      http_io.ResponseWriter.AddJsonFailureBody(response, str(w))
+      http_io.ResponseWriter.AddJsonFailureBody(response, str(e))
     except Exception as e:
       logger.error(e)
       http_io.ResponseWriter.AddJsonFailureBody(
@@ -1182,14 +1210,16 @@ class PublishManagerHelper(stream_manager.StreamManager):
         db_info.target_base_url = vhname_to_baseurl[db_info.virtual_host_name]
         db_info.target_path = publish_info[1]
         db_info.serve_wms = publish_info[2]
+        db_info.default_database = publish_info[3]
         if len(publish_info_list) > 1:
-          for vh_name, target_path, serve_wms in publish_info_list[1:]:
+          for vh_name, target_path, serve_wms, default_database in publish_info_list[1:]:
             add_db_info = copy.copy(db_info)
             add_db_info.virtual_host_name = vh_name
             add_db_info.target_base_url = vhname_to_baseurl[
                 add_db_info.virtual_host_name]
             add_db_info.target_path = target_path
             add_db_info.serve_wms = serve_wms
+            add_db_info.default_database = default_database
             add_db_info_list.append(add_db_info)
     db_info_list.extend(add_db_info_list)
 
@@ -1213,15 +1243,18 @@ class PublishManagerHelper(stream_manager.StreamManager):
     root = constants.CUTTER_GLOBES_PATH
     for name in os.listdir(root):
       # Ignore globes that are registered.
-      if (name not in registered_portable_set) and (os.path.isfile(name)):
-        db_info = basic_types.DbInfo()
-        db_info.name = name
-        db_info.type = db_info.name[-3:]
-        # Ignore files that are not Portables, eg .README
-        if serve_utils.IsPortable(db_info.type):
-          serve_utils.GlxDetails(db_info)
-          if db_info.size > GLOBE_SIZE_THRESHOLD:
-            globes_list.append(db_info)
+      if name not in registered_portable_set:
+        if os.path.isfile(os.path.join(root, name)):
+          db_info = basic_types.DbInfo()
+          db_info.name = name
+          db_info.type = db_info.name[-3:]
+          # Ignore files that are not Portables, eg .README
+          if serve_utils.IsPortable(db_info.type):
+            serve_utils.GlxDetails(db_info)
+            if db_info.size > GLOBE_SIZE_THRESHOLD:
+              globes_list.append(db_info)
+        else:
+          logger.warn( "%s is not a valid file and is being ignored." % os.path.join(root,name) )
 
     return globes_list
 
@@ -1448,7 +1481,8 @@ class PublishManagerHelper(stream_manager.StreamManager):
     query_db_target = (
         "SELECT target_db_table.db_id,"
         " virtual_host_table.virtual_host_name,"
-        " target_table.target_path, target_table.serve_wms"
+        " target_table.target_path, target_table.serve_wms,"
+        " target_db_table.publish_context_id"
         " FROM target_db_table, target_table, virtual_host_table"
         " WHERE target_table.target_id = target_db_table.target_id AND"
         " virtual_host_table.virtual_host_id = target_db_table.virtual_host_id")
@@ -1457,10 +1491,11 @@ class PublishManagerHelper(stream_manager.StreamManager):
     # Build a dictionary.
     db_to_publish_info_dct = dict(
         (db_id, []) for (db_id, unused_vh_name, unused_target_path,
-                         unused_serve_wms) in results)
-    for db_id, vh_name, target_path, serve_wms in results:
+                         unused_serve_wms, unused_default_db) in results)
+    for db_id, vh_name, target_path, serve_wms, publish_context_id in results:
+      default_database = self.IsDefaultDatabase(publish_context_id)
       db_to_publish_info_dct[db_id].append(
-          (vh_name, target_path, serve_wms))
+          (vh_name, target_path, serve_wms, default_database))
 
     return db_to_publish_info_dct
 

@@ -23,9 +23,14 @@ import os
 
 third_party_env = env.Clone()
 
+# See if native...
+qt4_native = int(ARGUMENTS.get('qt4_native', 0))
+
 # The order is important as n'th one has no dependency on anything after it
 if third_party_env['bundle_3rd_libs']:
   third_party_libs = [
+      'freetype',
+      'date',
       'gtest',
       'libjs',
       'libattr',
@@ -40,9 +45,8 @@ if third_party_env['bundle_3rd_libs']:
       'cython',
       'numpy',
       'libxml2', # requires python to build and install a Python library module, uses libz.
-      'qt',
-      'xerces-c',
       'libcurl',
+      'xerces-c',
       'glu',
       'proj',
       'ogdi',
@@ -57,15 +61,25 @@ if third_party_env['bundle_3rd_libs']:
       'setuptools',
       'mgrs',
       'PIL',
-      'skia']
+      'skia',
+      'pyyaml',
+      'defusedxml',
+      'swig',
+      'qt4'
+  ]
+elif third_party_env['portable_3rd_libs']:
+  third_party_libs = [
+    'swig'
+  ]
 else:
   third_party_libs = [
+      'freetype',
+      'date',
       'gtest',
       'libjs',
       'openssl',
       'openldap',
       'libcurl',
-      'qt',
       'glu',
       'openjpeg',
       'gdal',
@@ -75,14 +89,27 @@ else:
       'mod_wsgi',
       'psycopg2', # requires postgresql.
       'mgrs',
-      'skia']
-
+      'PIL',
+      'skia',
+      'pyyaml',
+      'defusedxml',
+      'swig'
+  ]
+  if qt4_native == 0:
+    third_party_libs.append('qt4')
 
 third_party_bin = '%s/bin' % Dir('.').abspath
 
 cflags = ' '.join(env['optflags'] + ['-fPIC'])
 lpaths = ' '.join(map(lambda i: '-L%s' % i, env['rpathlink_dirs']))
 lflags = ' '.join(third_party_env['LINKFLAGS'])
+
+# If we are on el8 we need to add tirpc
+if 'el8' in os.uname()[2]:
+  cflags += ' -I/usr/include/tirpc'
+  lflags += ' -ltirpc'
+
+#cflags += ' -I%s/include/freetype2' % Dir('.').abspath
 our_lib = '-L%s' % Dir(env.exportdirs['lib']).abspath
 lpaths = lpaths.replace(our_lib, '')
 lpaths = lpaths.replace('-L/opt/google/lib64/compatibility', '')

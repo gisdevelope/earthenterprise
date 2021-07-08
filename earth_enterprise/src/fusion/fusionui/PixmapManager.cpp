@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-#include <qpixmap.h>
-#include <qimage.h>
+#include <Qt/qglobal.h>
+#include <Qt/qpixmap.h>
+#include <Qt/qimage.h>
 #include <gstIconManager.h>
 #include <gstFileUtils.h>
 
@@ -47,8 +48,8 @@ static const char* const colorbox_xpm[] = {
   "********************"
 };
 
-QPixmap ColorBox::Pixmap(uint fill_r, uint fill_g, uint fill_b,
-                         uint outline_r, uint outline_g, uint outline_b) {
+QPixmap ColorBox::Pixmap(unsigned int fill_r, unsigned int fill_g, unsigned int fill_b,
+                         unsigned int outline_r, unsigned int outline_g, unsigned int outline_b) {
   QImage box(colorbox_xpm);
   box.setColor(kFillColorId, qRgb(fill_r, fill_g, fill_b));
   box.setColor(kOutlineColorId, qRgb(outline_r, outline_g, outline_b));
@@ -56,12 +57,12 @@ QPixmap ColorBox::Pixmap(uint fill_r, uint fill_g, uint fill_b,
 }
 
 QColor ColorBox::FillColor(const QPixmap& pix) {
-  QImage image = pix.convertToImage();
+  QImage image = pix.toImage();
   return QColor(image.color(kFillColorId));
 }
 
 QColor ColorBox::OutlineColor(const QPixmap& pix) {
-  QImage image = pix.convertToImage();
+  QImage image = pix.toImage();
   return QColor(image.color(kOutlineColorId));
 }
 
@@ -79,13 +80,13 @@ PixmapManager::PixmapManager() {
   IconReference::Type int_type = IconReference::Internal;
   for (int id = 0; id < theIconManager->IconCount(int_type); ++id) {
     std::string iconpath = theIconManager->GetFullPath(int_type, id);
-    QImage img(iconpath);
+    QImage img(iconpath.c_str());
     if (img.isNull()) {
       notify(NFY_WARN, "Unable to load internal icon %s, skipping.",
              iconpath.c_str());
       continue;
     }
-    pix_map_[theIconManager->GetIcon(int_type, id)] = img;
+    pix_map_[theIconManager->GetIcon(int_type, id)] = QPixmap::fromImage(img);
   }
 
   updateExternal();
@@ -99,13 +100,13 @@ void PixmapManager::updateExternal() {
     // only add new ones
     if (found == pix_map_.end()) {
       std::string iconpath = theIconManager->GetFullPath(ext_type, id);
-      QImage img(iconpath);
+      QImage img(iconpath.c_str());
       if (img.isNull()) {
         notify(NFY_WARN, "Unable to load external icon %s, skipping.",
                iconpath.c_str());
         continue;
       }
-      pix_map_[icon] = img;
+      pix_map_[icon] = QPixmap::fromImage(img);
     }
   }
 }
@@ -125,24 +126,24 @@ QPixmap PixmapManager::GetPixmap(const gstIcon& icon, IconType type) {
   QImage img;
   switch (type) {
     case NormalIcon:
-      img = pix;
+      img = pix.toImage();
       img = img.copy(0, width * 2, width, width);
-      pix = QPixmap(img);
+      pix = QPixmap::fromImage(img);
       break;
     case HighlightIcon:
-      img = pix;
+      img = pix.toImage();
       img = img.copy(0, width, width, width);
-      pix = QPixmap(img);
+      pix = QPixmap::fromImage(img);
       break;
     case RegularPair:
-      img = pix;
+      img = pix.toImage();
       img = img.copy(0, width, width, width*2);
-      pix = QPixmap(img);
+      pix = QPixmap::fromImage(img);
       break;
     case LayerIcon:
-      img = pix;
+      img = pix.toImage();
       img = img.copy(0, 0, 16, 16);
-      pix = QPixmap(img);
+      pix = QPixmap::fromImage(img);
       break;
     case AllThree:
       break;

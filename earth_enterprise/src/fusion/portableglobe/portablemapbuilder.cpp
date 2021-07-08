@@ -1,4 +1,5 @@
 // Copyright 2017 Google Inc.
+// Copyright 2020 The Open GEE Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,22 +32,23 @@
 #include "common/khEndian.h"
 #include "common/khFileUtils.h"
 #include "common/khStringUtils.h"
-#include "common/khTypes.h"
+//#include "common/khTypes.h"
+#include <cstdint>
 #include "fusion/gst/gstSimpleEarthStream.h"
 #include "fusion/gst/gstSimpleStream.h"
 #include "fusion/portableglobe/portableglobebuilder.h"
+#include "fusion/portableglobe/quadtree/qtutils.h"
 #include "fusion/portableglobe/shared/packetbundle.h"
 #include "fusion/portableglobe/shared/packetbundle_reader.h"
 #include "fusion/portableglobe/shared/packetbundle_writer.h"
 #include "mttypes/DrainableQueue.h"
 #include "mttypes/WaitBaseManager.h"
 
-
 // TODO: Use Manas' technique for bundling packet requests.
 namespace fusion_portableglobe {
 
 // Names of subdirectories within the portable globe.
-const uint16 PortableMapBuilder::kMaxPacketDepth = 7;  // 4 levels / packet
+const std::uint16_t PortableMapBuilder::kMaxPacketDepth = 7;  // 4 levels / packet
 const std::string PortableMapBuilder::kMapDataDirectory = "/mapdata";
 // This limit comes from HUGE_STRING_LEN of 8192 defined in httpd.h
 const size_t      PortableMapBuilder::kBundleSizeForSizeQuery = 8000;
@@ -59,11 +61,12 @@ const size_t      PortableMapBuilder::kBundleSizeForPacketQuery = 256;
  */
 PortableMapBuilder::PortableMapBuilder(
     const std::string& source,
-    uint16 default_level,
-    uint16 max_level,
+    std::uint16_t default_level,
+    std::uint16_t max_level,
     const std::string& hires_qt_nodes_file,
     const std::string& map_directory,
     const std::string& additional_args,
+    const std::string& metadata_file,
     bool ignore_imagery_depth,
     bool no_write)
     : map_directory_(map_directory),
@@ -71,6 +74,7 @@ PortableMapBuilder::PortableMapBuilder(
     max_level_(max_level),
     source_(source),
     additional_args_(additional_args),
+    metadata_file_(metadata_file),
     ignore_imagery_depth_(ignore_imagery_depth),
     is_no_write_(no_write) {
   // Build a structure for filtering quadtree addresses.
@@ -102,19 +106,16 @@ PortableMapBuilder::~PortableMapBuilder() {
  */
 void PortableMapBuilder::BuildMap() {
   num_image_packets = 0;
-  num_vector_packets = 0;
-  image_size = 0;
-  vector_size = 0;
-  total_size = 0;
 
   // Add writers for the different packet types.
   AddWriter(kMapDataDirectory);
 
   // Traverse the quadtree
   std::vector<char> qt_char(24);
-  std::vector<uint32> level_row(24);
-  std::vector<uint32> level_col(24);
-  int32 level = 0;
+  std::vector<std::uint32_t> level_row(24);
+  std::vector<std::uint32_t> level_col(24);
+  std::int32_t level = 0;
+  std::int32_t max_level_traversed = 0;
   std::string qt_string = "";
   qt_char[level] = '0';
   level_row[level] = 1;
@@ -139,6 +140,9 @@ void PortableMapBuilder::BuildMap() {
       // Go to next qtnode at this level.
       qt_char[level] += 1;
     } else {
+      if (level > max_level_traversed) {
+        max_level_traversed = level;
+      }
       qt_string = qt_string.substr(0, level) + qt_char[level];
       // Note that we stop descending once we reach the first
       // missing packet, which is important since this cue
@@ -147,14 +151,17 @@ void PortableMapBuilder::BuildMap() {
       if (WriteMapPackets(qt_string, level,
                           level_col[level], level_row[level])) {
         ++num_image_packets;
-        ++level;
-        qt_char[level] = '0';
-        level_row[level] = (level_row[level - 1] << 1) + 1;
-        level_col[level] = level_col[level - 1] << 1;
 
-        if (level >= 24) {
-          std::cout << "Bad level" << std::endl;
-          exit(0);
+        if (level < 23) {
+          ++level;
+          qt_char[level] = '0';
+          level_row[level] = (level_row[level - 1] << 1) + 1;
+          level_col[level] = level_col[level - 1] << 1;
+        } else if (level == 23) {
+          qt_char[level] += 1;
+        } else {
+          std::cout << "Bad level (" << level << ")" << std::endl;
+          exit(1);
         }
       } else {
         qt_char[level] += 1;
@@ -171,18 +178,30 @@ void PortableMapBuilder::BuildMap() {
     }
   }
 
+  if (!metadata_file_.empty()) {
+    bounds_tracker_.write_json_file(metadata_file_);
+  }
+
   // Finish up writing all of the packet bundles.
   DeleteWriter();
+
+  // The "+1" for max_level_traversed is because the code uses zero
+  // for the first level but the cutter page and most humans use one.
+  if (max_level_traversed+1 < max_level_) {
+    notify(NFY_WARN,
+      "Max level is %d but processing stopped at level %d.",
+      max_level_, max_level_traversed+1);
+  }
 }
 
 // TODO: Keep track of these as we go along rather than
 // TODO: calculating each time.
 void PortableMapBuilder::GetLevelRowCol(const std::string& qtpath_str,
-                                          uint32* level,
-                                          uint32* col,
-                                          uint32* row) {
+                                          std::uint32_t* level,
+                                          std::uint32_t* col,
+                                          std::uint32_t* row) {
   *level = qtpath_str.size();
-  uint32 ndim = 1 << *level;
+  std::uint32_t ndim = 1 << *level;
   *row = 0;
   *col = 0;
   for (size_t i = 0; i < *level; ++i) {
@@ -357,10 +376,27 @@ void PortableMapBuilder::ParseServerDefs(const std::string& json) {
 
 
 bool PortableMapBuilder::WriteMapPackets(const std::string& qtpath_str,
-                                           uint32 level,
-                                           uint32 col,
-                                           uint32 row) {
-  if (!KeepNode(qtpath_str)) {
+                                           std::uint32_t level,
+                                           std::uint32_t col,
+                                           std::uint32_t row) {
+  #ifdef WRITE_MAP_PACKETS_OUTPUT
+  // The following debug output is formatted for use in a spreadsheet.
+  // It captures all calls to this function and indicates if the call
+  // will result in an HTTP request.
+  static bool first = true;
+  if (first) {
+    first = false;
+    std::cout << "request,qtpath,level(z),col(x),row(y),packet.size" << std::endl;
+  }
+  #endif
+  bool keep_node = KeepNode(qtpath_str);
+  #ifdef WRITE_MAP_PACKETS_OUTPUT
+  std::cout << (keep_node ? "true," : "false,") << qtpath_str << "," << level << "," << col << "," << row << ",";
+  #endif
+  if (!keep_node) {
+    #ifdef WRITE_MAP_PACKETS_OUTPUT
+    std::cout << "0" << std::endl;
+    #endif
     return false;
   }
 
@@ -378,7 +414,10 @@ bool PortableMapBuilder::WriteMapPackets(const std::string& qtpath_str,
     std::string url = url_str;
     std::string raw_packet;
     server_->GetRawPacket(url, &raw_packet);
-    uint32 packet_type = layers_[i]->type_id;
+    #ifdef WRITE_MAP_PACKETS_OUTPUT
+    std::cout << raw_packet.size() << std::endl;
+    #endif
+    std::uint32_t packet_type = layers_[i]->type_id;
     if (raw_packet.size() > 0) {
       if (packet_type == kImagePacket) {
         // If we are using imagery to decide if we have reached the end of
@@ -388,6 +427,10 @@ bool PortableMapBuilder::WriteMapPackets(const std::string& qtpath_str,
         // (1 x 1 clear pngs) to unnecessarily deep levels.
         found_something = true;
       }
+
+      bounds_tracker_.update(layers_[i]->channel_num,
+                             static_cast<PacketType>(packet_type),
+                             qtpath_str);
 
       std::string full_qtpath = "0" + qtpath_str;
       writer_->AppendPacket(full_qtpath, packet_type, layers_[i]->channel_num,
@@ -405,7 +448,7 @@ bool PortableMapBuilder::WriteMapPackets(const std::string& qtpath_str,
  * pruned.
  */
 bool PortableMapBuilder::KeepNode(const std::string& qtpath) const {
-  uint16 level = qtpath.size();
+  std::uint16_t level = qtpath.size();
 
   // If we are at or below the default level, keep everything.
   if (level <= default_level_) {
